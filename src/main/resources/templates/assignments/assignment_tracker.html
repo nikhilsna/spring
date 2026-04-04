@@ -2,10 +2,8 @@
 <html xmlns:layout="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org"
       layout:decorate="~{layouts/base}" lang="en">
 
-<!-- Page Style -->
 <th:block layout:fragment="style" th:remove="tag">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
-    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css" />
     <style>
         .container {
             max-width: 1200px;
@@ -22,27 +20,19 @@
             text-align: center;
             text-decoration: none;
             display: inline-block;
-            font-size: 16px;
+            font-size: 14px;
             margin: 4px 2px;
             cursor: pointer;
             border-radius: 4px;
         }
 
-        .btn-delete {
-            background-color: #dc3545;
-        }
-
-        .btn-view-submissions {
-            background-color: #17a2b8;
-        }
-
-        .btn-grade {
-            background-color: #007bff;
-        }
-
-        .btn-randomize {
-            background-color: #6610f2;
-        }
+        .btn-delete { background-color: #dc3545; }
+        .btn-view-submissions { background-color: #17a2b8; }
+        .btn-grade { background-color: #007bff; }
+        .btn-randomize { background-color: #6610f2; }
+        .btn-export { background-color: #007bff; }
+        .btn-export-one { background-color: #03ad50; }
+        .btn-export-submissions { background-color: #6B73FF; }
 
         .toggle-container {
             display: flex;
@@ -59,65 +49,9 @@
             border-radius: 4px;
         }
 
-        .btn-export {
-            background-color: #007bff;
-            color: white;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-
-        .btn-exportOne {
-            background-color: #03ad50;
-            color: white;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-
-        .btn-exportSubmissions {
-            background-color: #6B73FF;
-            color: white;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-
         .toggle-btn.toggle-active {
             background-color: #4CAF50;
             color: white;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-
-        th {
-            background-color: #333;
-            color: #fff;
         }
 
         .modal {
@@ -134,11 +68,11 @@
 
         .modal-content {
             background-color: #1b1c1a;
-            margin: 15% auto;
+            margin: 6% auto;
             padding: 20px;
             border-radius: 8px;
-            width: 80%;
-            max-width: 900px;
+            width: 85%;
+            max-width: 980px;
         }
 
         .close-btn {
@@ -149,69 +83,25 @@
             cursor: pointer;
         }
 
-        .close-btn:hover {
-            color: black;
-        }
+        .close-btn:hover { color: white; }
 
-        .modal h2 {
-            margin-bottom: 20px;
-        }
+        .stack { margin: 8px 0; }
 
-        .modal table {
+        .stack input, .stack select, .stack textarea {
             width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
+            max-width: 580px;
         }
 
-        .modal th, .modal td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
+        #frontmatterPreview {
+            width: 100%;
+            min-height: 140px;
+            font-family: monospace;
         }
-
-        .modal th {
-            background-color: #444;
-            color: white;
-        }
-
-        .modal tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        td.wrap-text {
-            max-width: 200px;        /* set the max width you want */
-            word-wrap: break-word;   /* ensures long words like URLs will break*/
-            word-break: break-all;   /* breaks within words if needed */
-            white-space: normal;     /* allows wrapping */
-          }
-        
-
-        td.wrap-text {
-            max-width: 200px;        /* set the max width you want */
-            word-wrap: break-word;   /* ensures long words like URLs will break*/
-            word-break: break-all;   /* breaks within words if needed */
-            white-space: normal;     /* allows wrapping */
-        }
-
-        #submissionsTable_length, #submissionsTable_filter input {
-            color: #AAA;
-        }
-
-        #assignmentTable_length select {
-            color: white;
-        }
-
-        .dataTables_length select {
-            color: white !important;
-            background-color: #333;
-        }
-        
     </style>
 </th:block>
 
-<!-- Page Title -->
 <th:block layout:fragment="title" th:remove="tag">Assignment Tracker</th:block>
 
-<!-- Page Body -->
 <th:block layout:fragment="body" th:remove="tag">
     <div class="container">
         <div class="toggle-container">
@@ -219,42 +109,62 @@
             <button class="toggle-btn" onclick="toggleView('student')">Student Focused</button>
         </div>
 
-        <!-- Assignment View -->
         <div id="assignmentView">
             <h1>Assignment Tracker</h1>
             <button class="btn" onclick="showAddAssignmentModal()">Add Assignment</button>
-            <button class="btn-export" onclick="exportAssignments()">Export All Assignments</button>
+            <button class="btn btn-export" onclick="exportAssignments()">Export All Assignments</button>
 
-            <!-- Add Assignment Modal -->
             <div id="addAssignmentModal" class="modal">
                 <div class="modal-content">
                     <span class="close-btn" onclick="closeAddAssignmentModal()">&times;</span>
                     <h2>Add New Assignment</h2>
-                    <label>Name: <input type="text" id="assignmentName"></label><br>
-                    <label>Type: <input type="text" id="assignmentType"></label><br>
-                    <label>Description: <input type="text" id="assignmentDescription"></label><br>
-                    <label>Points: <input type="number" id="assignmentPoints"></label><br>
-                    <label>Due Date: <input type="date" id="assignmentDueDate"></label><br>
+
+                    <div class="stack"><label>Name</label><input type="text" id="assignmentName"></div>
+                    <div class="stack"><label>Type</label><input type="text" id="assignmentType"></div>
+                    <div class="stack"><label>Description</label><input type="text" id="assignmentDescription"></div>
+                    <div class="stack"><label>Points</label><input type="number" id="assignmentPoints"></div>
+                    <div class="stack"><label>Due Date</label><input type="date" id="assignmentDueDate"></div>
+
+                    <div class="stack">
+                        <label>Resource Type</label>
+                        <select id="assignmentResourceMode" onchange="onResourceModeChange()">
+                            <option value="none">None</option>
+                            <option value="url">URL</option>
+                            <option value="file">File Upload</option>
+                        </select>
+                    </div>
+
+                    <div id="resourceUrlWrap" class="stack" style="display:none;">
+                        <label>Resource URL</label>
+                        <input type="url" id="assignmentResourceUrl" placeholder="https://...">
+                    </div>
+
+                    <div id="resourceFileWrap" class="stack" style="display:none;">
+                        <label>Resource File</label>
+                        <input type="file" id="assignmentResourceFile">
+                    </div>
+
+                    <div class="stack">
+                        <label>Frontmatter YAML (paste into frontend frontmatter)</label>
+                        <textarea id="frontmatterPreview" readonly placeholder="Generated after assignment creation"></textarea>
+                    </div>
+
                     <button class="btn" onclick="createAssignment()">Submit</button>
                     <button class="btn" onclick="closeAddAssignmentModal()">Cancel</button>
                 </div>
             </div>
 
-            <!-- Assign to Grade Modal -->
             <div id="assignToGradeModal" class="modal">
                 <div class="modal-content">
                     <span class="close-btn" onclick="closeAssignToGradeModal()">&times;</span>
                     <h2>Assign to Students</h2>
                     <input type="text" id="studentSearchBar" placeholder="Search students..." oninput="filterStudentList()">
-                    <ul id="studentChecklist">
-                        <!-- Dynamically populated -->
-                    </ul>
+                    <ul id="studentChecklist"></ul>
                     <button class="btn" onclick="saveAssignedGraders()">Save</button>
                     <button class="btn" onclick="closeAssignToGradeModal()">Close</button>
                 </div>
             </div>
 
-            <!-- Randomize Graders Modal -->
             <div id="randomizeGradersModal" class="modal">
                 <div class="modal-content">
                     <span class="close-btn" onclick="closeRandomizeGradersModal()">&times;</span>
@@ -265,25 +175,22 @@
                 </div>
             </div>
 
-
             <table id="assignmentTable" class="display">
                 <thead>
                     <tr>
+                        <th>ID</th>
                         <th>Name</th>
                         <th>Type</th>
                         <th>Description</th>
                         <th>Points</th>
                         <th>Due Date</th>
+                        <th>Resource</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <!-- Dynamically populated -->
-                </tbody>
             </table>
         </div>
 
-        <!-- Student View -->
         <div id="studentView" style="display: none;">
             <h1>Student Submissions Tracker</h1>
             <table id="studentsTable" class="display">
@@ -295,12 +202,9 @@
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody id="studentList">
-                </tbody>
             </table>
         </div>
 
-        <!-- Submissions Modal -->
         <div id="submissionsModal" class="modal">
             <div class="modal-content">
                 <span class="close-btn" onclick="closeSubmissionsModal()">&times;</span>
@@ -308,7 +212,7 @@
                 <table id="submissionsTable" class="display">
                     <thead>
                         <tr>
-                            <th>Student</th>
+                            <th>Student/Group</th>
                             <th>Content</th>
                             <th>Comments</th>
                             <th>Grade</th>
@@ -321,432 +225,374 @@
     </div>
 </th:block>
 
-<!-- Page Scripts -->
 <th:block layout:fragment="script" th:remove="tag">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
     <script>
-        $(document).ready(function () {
-            const assignmentTable = $('#assignmentTable').DataTable();
-            const studentTable = $('#studentsTable').DataTable({
-                paging: true,
-                searching: true,
-                info: true,
-                autoWidth: false,
-                columns: [
-                    { title: "Name" },
-                    { title: "Email" },
-                    { title: "Total Submissions" },
-                    { title: "Actions", orderable: false }
-                ]
-            });
-        
-            const submissionsTable = $('#submissionsTable').DataTable({
-                paging: true,
-                searching: true,
-                info: true,
-                autoWidth: false,
-                columns: [
-                    { title: "Student/Group" }, // Placeholder, updated dynamically
-                    { title: "Content" },
-                    { title: "Comments" },
-                    { title: "Grade" },
-                    { title: "Actions", orderable: false }
-                ]
-            });
-            fetchAssignments();
-            fetchStudents();
+        let assignmentTable;
+        let studentTable;
+        let submissionsTable;
 
-            function fetchAssignments() {
-                fetch('/api/assignments/debug')
-                    .then(response => response.json())
-                    .then(assignments => {
-                        assignmentTable.clear();
-                        assignments.forEach(assignment => {
-                            assignmentTable.row.add([
-                                assignment.name,
-                                assignment.type,
-                                assignment.description || '',
-                                assignment.points,
-                                assignment.dueDate,
-                                `
-                                    <button class="btn btn-view-submissions" onclick="viewSubmissions(${assignment.id})">View Submissions</button>
-                                    <button class="btn btn-delete" onclick="deleteAssignment(${assignment.id})">Delete</button>
-                                    <button class="btn btn-grade" onclick="showAssignToGradeModal(${assignment.id})">Assign to Grade</button>
-                                    <button class="btn btn-randomize" onclick="showRandomizeGradersModal(${assignment.id})">Randomize Graders</button>
-                                    <button class="btn-exportOne" onclick="exportIndividualAssignment(${assignment.id})">Export Assignment</button>
-                                    <button class="btn-exportSubmissions" onclick="exportSubmissions(${assignment.id})">Export Assignment Submissions</button>
-                                    `
-                            ]);
-                        });
-                        assignmentTable.draw();
-                    });
+        function toMDY(dateString) {
+            const date = new Date(dateString);
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${month}/${day}/${year}`;
+        }
+
+        function escapeCsv(value) {
+            const raw = value == null ? '' : String(value);
+            return /[",\n\r]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+        }
+
+        function downloadCsv(filename, rows) {
+            const csvContent = rows.map(row => row.map(escapeCsv).join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function renderResource(assignment) {
+            if (assignment.resourceType === 'url' && assignment.resourceUrl) {
+                return `<a href="${assignment.resourceUrl}" target="_blank" rel="noopener noreferrer">URL</a>`;
             }
-
-            function fetchStudents() {
-                fetch('/api/people')
-                    .then(response => response.json())
-                    .then(people => {
-                        studentTable.clear(); // Clear the DataTable
-                        people.forEach(student => {
-                            studentTable.row.add([
-                                student.name,
-                                student.email,
-                                `<span id="submissionCount-${student.id}">Loading...</span>`,
-                                `
-                                    <button class="btn btn-view-submissions" onclick="viewStudentSubmissions(${student.id}, '${student.name}')">View Submissions</button>
-                                `
-                            ]);
-
-                            // Fetch submission count for each student
-                            fetch(`/api/assignments/submissions/student/${student.id}`)
-                                .then(response => response.json())
-                                .then(submissions => {
-                                    document.getElementById(`submissionCount-${student.id}`).textContent = submissions.length;
-                                });
-                        });
-                        studentTable.draw(); // Redraw the DataTable
-                    })
-                    .catch(error => {
-                        console.error('Error fetching students:', error);
-                        alert('Failed to fetch students.');
-                    });
+            if (assignment.resourceType === 'file' && assignment.resourceStoragePath) {
+                return assignment.resourceFilename || 'File Uploaded';
             }
+            return 'None';
+        }
 
-            window.createAssignment = function () {
-                const name = document.getElementById('assignmentName').value;
-                const type = document.getElementById('assignmentType').value;
-                const description = document.getElementById('assignmentDescription').value;
-                const points = document.getElementById('assignmentPoints').value;
-                const dueDate = formatDate(document.getElementById('assignmentDueDate').value);
+        async function fetchAssignments() {
+            const response = await fetch('/api/assignments/debug');
+            const assignments = await response.json();
+            assignmentTable.clear();
+            assignments.forEach(assignment => {
+                assignmentTable.row.add([
+                    assignment.id,
+                    assignment.name,
+                    assignment.type,
+                    assignment.description || '',
+                    assignment.points,
+                    assignment.dueDate,
+                    renderResource(assignment),
+                    `
+                        <button class="btn btn-view-submissions" onclick="viewSubmissions(${assignment.id})">View Submissions</button>
+                        <button class="btn btn-delete" onclick="deleteAssignment(${assignment.id})">Delete</button>
+                        <button class="btn btn-grade" onclick="showAssignToGradeModal(${assignment.id})">Assign to Grade</button>
+                        <button class="btn btn-randomize" onclick="showRandomizeGradersModal(${assignment.id})">Randomize Graders</button>
+                        <button class="btn btn-export-one" onclick="exportIndividualAssignment(${assignment.id})">Export Assignment</button>
+                        <button class="btn btn-export-submissions" onclick="exportSubmissions(${assignment.id})">Export Submissions</button>
+                        <button class="btn" onclick="generateFrontmatter(${assignment.id})">Frontmatter</button>
+                    `
+                ]);
+            });
+            assignmentTable.draw();
+        }
 
-                const params = new URLSearchParams({
-                    name, type, description, points, dueDate
-                });
+        async function fetchStudents() {
+            const response = await fetch('/api/people');
+            const people = await response.json();
+            studentTable.clear();
+            people.forEach(student => {
+                studentTable.row.add([
+                    student.name,
+                    student.email,
+                    `<span id="submissionCount-${student.id}">Loading...</span>`,
+                    `<button class="btn btn-view-submissions" onclick="viewStudentSubmissions(${student.id}, '${student.name}')">View Submissions</button>`
+                ]);
 
-                fetch('/api/assignments/create', {
-                    method: 'POST',
-                    body: params
-                })
-                    .then(response => {
-                        if (response.ok) {
-                            alert('Assignment created successfully!');
-                            fetchAssignments();
-                            closeAddAssignmentModal();
-                        } else {
-                            alert('Failed to create assignment.');
-                        }
-                    });
-            };
-
-            window.deleteAssignment = function (id) {
-                if (confirm('Are you sure you want to delete this assignment?')) {
-                    fetch(`/api/assignments/delete/${id}`, {
-                        method: 'POST'
-                    }).then(fetchAssignments);
-                }
-            };
-
-            window.viewSubmissions = function (id) {
-                fetch(`/api/submissions/assignment/${id}`)
-                    .then(response => response.json())
+                fetch(`/api/assignments/submissions/student/${student.id}`)
+                    .then(r => r.ok ? r.json() : [])
                     .then(submissions => {
-                        submissionsTable.clear();
-                        if (submissions.length === 0) {
-                            submissionsTable.row.add(['No submissions found', '', '', '', '']);
-                        } else {
-                            submissions.forEach(submission => {
-                                submissionsTable.row.add([
-                                    submission.submitter.name,
-                                    submission.content || 'No content',
-                                    submission.comment || 'No comments',
-                                    submission.grade || 'Not graded',
-                                    `<button class="btn btn-grade" onclick="gradeSubmission(${submission.id})">Grade</button>`
-                                ]);
-                            });
+                        const countTarget = document.getElementById(`submissionCount-${student.id}`);
+                        if (countTarget) {
+                            countTarget.textContent = submissions.length;
                         }
-                        submissionsTable.draw();
-                        document.getElementById('submissionsModal').style.display = 'block';
-                    })
-                    .catch(error => {
-                        console.error('Error fetching submissions:', error);
-                        alert('Failed to fetch submissions.');
                     });
-            };
+            });
+            studentTable.draw();
+        }
 
-            window.closeAddAssignmentModal = function () {
-                document.getElementById('addAssignmentModal').style.display = 'none';
-            };
+        async function attachAssignmentUrl(assignmentId, url) {
+            const response = await fetch(`/api/assignments/${assignmentId}/resource/url`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
+            if (!response.ok) {
+                throw new Error('Failed to save URL resource');
+            }
+        }
 
-            window.closeSubmissionsModal = function () {
-                document.getElementById('submissionsModal').style.display = 'none';
-            };
+        async function attachAssignmentFile(assignmentId, file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await fetch(`/api/assignments/${assignmentId}/resource/file`, {
+                method: 'POST',
+                body: formData
+            });
+            if (!response.ok) {
+                throw new Error('Failed to upload file resource');
+            }
+        }
 
-            window.showAssignToGradeModal = function (assignmentId) {
-                const modal = document.getElementById('assignToGradeModal');
-                modal.dataset.assignmentId = assignmentId;
-                const checklist = document.getElementById('studentChecklist');
-                checklist.innerHTML = '';
+        async function generateFrontmatter(assignmentId) {
+            const response = await fetch(`/api/assignments/${assignmentId}/frontmatter`);
+            if (!response.ok) {
+                throw new Error('Failed to generate frontmatter');
+            }
+            const payload = await response.json();
+            document.getElementById('frontmatterPreview').value = payload.frontmatter || '';
+            showAddAssignmentModal();
+        }
 
-                fetch('/api/people')
-                    .then(response => response.json())
-                    .then(students => {
-                        students.forEach(student => {
-                            const listItem = document.createElement('li');
-                            listItem.innerHTML = `
-                                <label>
-                                    <input type="checkbox" data-student-id="${student.id}">
-                                    ${student.name} (${student.email})
-                                </label>
-                            `;
-                            checklist.appendChild(listItem);
-                        });
-                        modal.style.display = 'block';
-                    })
-                    .catch(error => {
-                        console.error('Error fetching students:', error);
-                        alert('Failed to load students.');
-                    });
-            };
+        window.onResourceModeChange = function () {
+            const mode = document.getElementById('assignmentResourceMode').value;
+            document.getElementById('resourceUrlWrap').style.display = mode === 'url' ? 'block' : 'none';
+            document.getElementById('resourceFileWrap').style.display = mode === 'file' ? 'block' : 'none';
+        };
 
-            window.closeAssignToGradeModal = function () {
-                document.getElementById('assignToGradeModal').style.display = 'none';
-            };
+        window.createAssignment = async function () {
+            const name = document.getElementById('assignmentName').value;
+            const type = document.getElementById('assignmentType').value;
+            const description = document.getElementById('assignmentDescription').value;
+            const points = document.getElementById('assignmentPoints').value;
+            const dueDateRaw = document.getElementById('assignmentDueDate').value;
+            const mode = document.getElementById('assignmentResourceMode').value;
+            const resourceUrl = document.getElementById('assignmentResourceUrl').value;
+            const resourceFile = document.getElementById('assignmentResourceFile').files[0];
 
-            window.saveAssignedGraders = function () {
-                const modal = document.getElementById('assignToGradeModal');
-                const assignmentId = modal.dataset.assignmentId;
-                const selectedCheckboxes = Array.from(document.querySelectorAll('#studentChecklist input:checked'));
-                const selectedIds = selectedCheckboxes.map(cb => parseInt(cb.dataset.studentId));
+            if (!name || !type || !points || !dueDateRaw) {
+                alert('Name, type, points, and due date are required.');
+                return;
+            }
 
-                fetch(`/api/assignments/assignGraders/${assignmentId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(selectedIds),
-                })
-                    .then(response => {
-                        if (response.ok) {
-                            alert('Assigned persons saved successfully.');
-                            closeAssignToGradeModal();
-                        } else {
-                            alert('Failed to save assigned persons.');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error saving assigned persons:', error);
-                        alert('An error occurred while saving.');
-                    });
-            };
+            if (mode === 'url' && !resourceUrl) {
+                alert('Please provide a URL resource.');
+                return;
+            }
 
-            window.showRandomizeGradersModal = function (assignmentId) {
-                const modal = document.getElementById('randomizeGradersModal');
-                modal.dataset.assignmentId = assignmentId;
-                modal.style.display = 'block';
-            };
+            if (mode === 'file' && !resourceFile) {
+                alert('Please select a file resource.');
+                return;
+            }
 
-            window.closeRandomizeGradersModal = function () {
-                document.getElementById('randomizeGradersModal').style.display = 'none';
-            };
+            const params = new URLSearchParams({
+                name,
+                type,
+                description,
+                points,
+                dueDate: toMDY(dueDateRaw)
+            });
 
-            window.confirmRandomizeGraders = function () {
-                const modal = document.getElementById('randomizeGradersModal');
-                const assignmentId = modal.dataset.assignmentId;
-
-                fetch(`/api/assignments/randomizeGraders/${assignmentId}`, {
-                    method: 'POST'
-                })
-                    .then(response => {
-                        if (response.ok) {
-                            alert('Graders randomized successfully!');
-                            closeRandomizeGradersModal();
-                        } else {
-                            return response.text().then(errorMsg => {
-                                throw new Error(errorMsg);
-                            });
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error randomizing graders:', error);
-                        alert('Failed to randomize graders: ' + error.message);
-                    });
-            };
-
-            window.viewStudentSubmissions = function (studentId, studentName) {
-                fetch(`/api/assignments/submissions/student/${studentId}`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-                        return response.json();
-                    })
-                    .then(async (submissions) => {
-                        submissionsTable.clear(); // Clear the DataTable
-                        const studentNameHeader = document.getElementById('studentNameHeader');
-                        studentNameHeader.textContent = `${studentName}'s Submissions`;
-
-                        if (submissions.length === 0) {
-                            submissionsTable.row.add(['No submissions found', '', '', '', '']);
-                        } else {
-                            submissions.forEach(submission => {
-                                submissionsTable.row.add([
-                                    submission.assignmentName || 'Unknown Assignment',
-                                    submission.content || 'No content',
-                                    submission.comment || 'No comments',
-                                    submission.grade || 'Not graded',
-                                    `<button class="btn btn-grade" onclick="gradeSubmission(${submission.id})">Grade</button>`
-                                ]);
-                            });
-                        }
-                        submissionsTable.draw(); // Redraw the DataTable
-                        document.getElementById('submissionsModal').style.display = 'block';
-                    })
-                    .catch(error => {
-                        console.error('Error fetching submissions:', error);
-                        submissionsTable.clear();
-                        submissionsTable.row.add(['Failed to fetch submissions', '', '', '', '']);
-                        submissionsTable.draw();
-                        document.getElementById('submissionsModal').style.display = 'block';
-                    });
-            };
-
-        });
-
-
-            window.createAssignment = function () {
-                const name = document.getElementById('assignmentName').value;
-                const type = document.getElementById('assignmentType').value;
-                const description = document.getElementById('assignmentDescription').value;
-                const points = document.getElementById('assignmentPoints').value;
-                const dueDate = document.getElementById('assignmentDueDate').value;
-
-                const params = new URLSearchParams({
-                    name, type, description, points, dueDate
-                });
-
-                fetch('/api/assignments/create', {
+            try {
+                const createResponse = await fetch('/api/assignments/create', {
                     method: 'POST',
                     body: params
-                })
-                    .then(response => {
-                        if (response.ok) {
-                            alert('Assignment created successfully!');
-                            fetchAssignments();
-                            closeAddAssignmentModal();
-                        } else {
-                            alert('Failed to create assignment.');
-                        }
-                    });
-            };
-
-            window.deleteAssignment = function (id) {
-                if (confirm('Are you sure you want to delete this assignment?')) {
-                    fetch(`/api/assignments/delete/${id}`, {
-                        method: 'POST'
-                    }).then(fetchAssignments);
+                });
+                if (!createResponse.ok) {
+                    throw new Error('Failed to create assignment');
                 }
-            };
 
-            window.closeAddAssignmentModal = function () {
-                document.getElementById('addAssignmentModal').style.display = 'none';
-            };
+                const assignment = await createResponse.json();
+                const assignmentId = assignment.id;
 
-            window.closeSubmissionsModal = function () {
-                document.getElementById('submissionsModal').style.display = 'none';
-            };
+                if (mode === 'url') {
+                    await attachAssignmentUrl(assignmentId, resourceUrl);
+                } else if (mode === 'file') {
+                    await attachAssignmentFile(assignmentId, resourceFile);
+                }
 
-            window.showAssignToGradeModal = function (assignmentId) {
-                const modal = document.getElementById('assignToGradeModal');
-                modal.dataset.assignmentId = assignmentId;
-                const checklist = document.getElementById('studentChecklist');
-                checklist.innerHTML = '';
+                await generateFrontmatter(assignmentId);
+                await fetchAssignments();
+                alert(`Assignment created with ID ${assignmentId}.`);
+            } catch (error) {
+                console.error(error);
+                alert('Create failed: ' + error.message);
+            }
+        };
 
-                fetch('/api/people')
-                    .then(response => response.json())
-                    .then(students => {
-                        students.forEach(student => {
-                            const listItem = document.createElement('li');
-                            listItem.innerHTML = `
-                                <label>
-                                    <input type="checkbox" data-student-id="${student.id}">
-                                    ${student.name} (${student.email})
-                                </label>
-                            `;
-                            checklist.appendChild(listItem);
+        window.deleteAssignment = function (id) {
+            if (!confirm('Are you sure you want to delete this assignment?')) {
+                return;
+            }
+            fetch(`/api/assignments/delete/${id}`, { method: 'POST' }).then(fetchAssignments);
+        };
+
+        window.viewSubmissions = function (id) {
+            fetch(`/api/submissions/assignment/${id}`)
+                .then(response => response.json())
+                .then(submissions => {
+                    submissionsTable.clear();
+                    if (submissions.length === 0) {
+                        submissionsTable.row.add(['No submissions found', '', '', '', '']);
+                    } else {
+                        submissions.forEach(submission => {
+                            submissionsTable.row.add([
+                                submission.submitter?.name || 'Unknown',
+                                submission.content || 'No content',
+                                submission.comment || 'No comments',
+                                submission.grade || 'Not graded',
+                                `<button class="btn btn-grade" onclick="gradeSubmission(${submission.id})">Grade</button>`
+                            ]);
                         });
+                    }
+                    submissionsTable.draw();
+                    document.getElementById('submissionsModal').style.display = 'block';
+                });
+        };
 
-                        modal.style.display = 'block';
-                    })
-                    .catch(error => {
-                        console.error('Error fetching students:', error);
-                        alert('Failed to load students.');
+        window.viewStudentSubmissions = function (studentId, studentName) {
+            fetch(`/api/assignments/submissions/student/${studentId}`)
+                .then(response => response.json())
+                .then(submissions => {
+                    submissionsTable.clear();
+                    document.getElementById('studentNameHeader').textContent = `${studentName}'s Submissions`;
+                    if (submissions.length === 0) {
+                        submissionsTable.row.add(['No submissions found', '', '', '', '']);
+                    } else {
+                        submissions.forEach(submission => {
+                            submissionsTable.row.add([
+                                submission.assignment?.name || 'Unknown Assignment',
+                                submission.content || 'No content',
+                                submission.comment || 'No comments',
+                                submission.grade || 'Not graded',
+                                `<button class="btn btn-grade" onclick="gradeSubmission(${submission.id})">Grade</button>`
+                            ]);
+                        });
+                    }
+                    submissionsTable.draw();
+                    document.getElementById('submissionsModal').style.display = 'block';
+                });
+        };
+
+        window.showAssignToGradeModal = function (assignmentId) {
+            const modal = document.getElementById('assignToGradeModal');
+            modal.dataset.assignmentId = assignmentId;
+            const checklist = document.getElementById('studentChecklist');
+            checklist.innerHTML = '';
+            fetch('/api/people')
+                .then(response => response.json())
+                .then(students => {
+                    students.forEach(student => {
+                        const li = document.createElement('li');
+                        li.innerHTML = `<label><input type="checkbox" data-student-id="${student.id}"> ${student.name} (${student.email})</label>`;
+                        checklist.appendChild(li);
                     });
-            };
+                    modal.style.display = 'block';
+                });
+        };
 
-            window.closeAssignToGradeModal = function () {
-                document.getElementById('assignToGradeModal').style.display = 'none';
-            };
+        window.saveAssignedGraders = function () {
+            const modal = document.getElementById('assignToGradeModal');
+            const assignmentId = modal.dataset.assignmentId;
+            const selectedIds = Array.from(document.querySelectorAll('#studentChecklist input:checked'))
+                .map(cb => parseInt(cb.dataset.studentId, 10));
 
-            window.saveAssignedGraders = function () {
-                const modal = document.getElementById('assignToGradeModal');
-                const assignmentId = modal.dataset.assignmentId;
-                const selectedCheckboxes = Array.from(document.querySelectorAll('#studentChecklist input:checked'));
-                const selectedIds = selectedCheckboxes.map(cb => parseInt(cb.dataset.studentId));
+            fetch(`/api/assignments/assignGraders/${assignmentId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(selectedIds)
+            }).then(() => closeAssignToGradeModal());
+        };
 
-                fetch(`/api/assignments/assignGraders/${assignmentId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(selectedIds),
-                })
-                    .then(response => {
-                        if (response.ok) {
-                            alert('Assigned persons saved successfully.');
-                            closeAssignToGradeModal();
-                        } else {
-                            alert('Failed to save assigned persons.');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error saving assigned persons:', error);
-                        alert('An error occurred while saving.');
+        window.showRandomizeGradersModal = function (assignmentId) {
+            const modal = document.getElementById('randomizeGradersModal');
+            modal.dataset.assignmentId = assignmentId;
+            modal.style.display = 'block';
+        };
+
+        window.confirmRandomizeGraders = function () {
+            const modal = document.getElementById('randomizeGradersModal');
+            const assignmentId = modal.dataset.assignmentId;
+            fetch(`/api/assignments/randomizeGraders/${assignmentId}`, { method: 'POST' })
+                .then(() => closeRandomizeGradersModal());
+        };
+
+        window.gradeSubmission = function (submissionId) {
+            const grade = prompt('Enter grade:');
+            const feedback = prompt('Enter feedback (optional):');
+            if (grade === null) {
+                return;
+            }
+            const params = new URLSearchParams({ grade, feedback: feedback || '' });
+            fetch(`/api/submissions/grade/${submissionId}`, {
+                method: 'POST',
+                body: params
+            });
+        };
+
+        window.exportAssignments = function () {
+            fetch('/api/assignments/bulk/extract')
+                .then(r => r.json())
+                .then(data => {
+                    if (!Array.isArray(data) || data.length === 0) {
+                        alert('No assignments to export.');
+                        return;
+                    }
+                    const headers = Object.keys(data[0]);
+                    const rows = [headers];
+                    data.forEach(item => rows.push(headers.map(h => item[h] ?? '')));
+                    downloadCsv('assignments.csv', rows);
+                });
+        };
+
+        window.exportIndividualAssignment = function (id) {
+            fetch(`/api/assignments/extract/${id}`)
+                .then(r => r.json())
+                .then(data => {
+                    const row = Array.isArray(data) ? data[0] : data;
+                    const headers = Object.keys(row);
+                    downloadCsv(`assignment_${id}.csv`, [headers, headers.map(h => row[h] ?? '')]);
+                });
+        };
+
+        window.exportSubmissions = function (id) {
+            fetch(`/api/submissions/assignment/${id}`)
+                .then(r => r.json())
+                .then(submissions => {
+                    if (!Array.isArray(submissions) || submissions.length === 0) {
+                        alert('No submissions to export.');
+                        return;
+                    }
+                    const rows = [[
+                        'submission_id',
+                        'assignment_id',
+                        'assignment_name',
+                        'submitter_id',
+                        'submitter_name',
+                        'content',
+                        'comment',
+                        'grade',
+                        'feedback',
+                        'is_late'
+                    ]];
+                    submissions.forEach(submission => {
+                        rows.push([
+                            submission.id,
+                            submission.assignment?.id || '',
+                            submission.assignment?.name || '',
+                            submission.submitter?.id || '',
+                            submission.submitter?.name || '',
+                            submission.content || '',
+                            submission.comment || '',
+                            submission.grade || '',
+                            submission.feedback || '',
+                            submission.isLate || false
+                        ]);
                     });
-            };
+                    downloadCsv(`submissions_assignment_${id}.csv`, rows);
+                });
+        };
 
-            window.showRandomizeGradersModal = function (assignmentId) {
-                const modal = document.getElementById('randomizeGradersModal');
-                modal.dataset.assignmentId = assignmentId;
-                modal.style.display = 'block';
-            };
-
-            window.closeRandomizeGradersModal = function () {
-                document.getElementById('randomizeGradersModal').style.display = 'none';
-            };
-
-            window.confirmRandomizeGraders = function () {
-                const modal = document.getElementById('randomizeGradersModal');
-                const assignmentId = modal.dataset.assignmentId;
-
-                fetch(`/api/assignments/randomizeGraders/${assignmentId}`, {
-                    method: 'POST'
-                })
-                    .then(response => {
-                        if (response.ok) {
-                            alert('Graders randomized successfully!');
-                            closeRandomizeGradersModal();
-                        } else {
-                            return response.text().then(errorMsg => {
-                                throw new Error(errorMsg);
-                            });
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error randomizing graders:', error);
-                        alert('Failed to randomize graders: ' + error.message);
-                    });
-            };
-
-            
-
-        function toggleView(view) {
+        window.toggleView = function (view) {
             const assignmentView = document.getElementById('assignmentView');
             const studentView = document.getElementById('studentView');
             const assignmentToggle = document.querySelector('.toggle-btn:first-child');
@@ -758,268 +604,75 @@
                 assignmentToggle.classList.add('toggle-active');
                 studentToggle.classList.remove('toggle-active');
                 fetchAssignments();
-
             } else {
                 assignmentView.style.display = 'none';
                 studentView.style.display = 'block';
                 assignmentToggle.classList.remove('toggle-active');
                 studentToggle.classList.add('toggle-active');
                 fetchStudents();
-
             }
-        }
+        };
 
-
-        function showAddAssignmentModal() {
+        window.showAddAssignmentModal = function () {
             document.getElementById('addAssignmentModal').style.display = 'block';
-        }
-    
-        function closeAddAssignmentModal() {
+        };
+
+        window.closeAddAssignmentModal = function () {
             document.getElementById('addAssignmentModal').style.display = 'none';
-        }
+        };
 
+        window.closeSubmissionsModal = function () {
+            document.getElementById('submissionsModal').style.display = 'none';
+        };
 
-        function filterStudentList() {
+        window.closeAssignToGradeModal = function () {
+            document.getElementById('assignToGradeModal').style.display = 'none';
+        };
+
+        window.closeRandomizeGradersModal = function () {
+            document.getElementById('randomizeGradersModal').style.display = 'none';
+        };
+
+        window.filterStudentList = function () {
             const searchValue = document.getElementById('studentSearchBar').value.toLowerCase();
             const studentItems = document.querySelectorAll('#studentChecklist li');
-        
             studentItems.forEach(item => {
-                const studentName = item.textContent.toLowerCase();
-                if (studentName.includes(searchValue)) {
-                    item.style.display = ''; // Show item
-                } else {
-                    item.style.display = 'none'; // Hide item
-                }
+                item.style.display = item.textContent.toLowerCase().includes(searchValue) ? '' : 'none';
             });
-        
-            
-        }
+        };
 
-        function gradeSubmission(submissionId) {
-            const grade = prompt('Enter grade:');
-            const feedback = prompt('Enter feedback (optional):');
-    
-            if (grade !== null) {
-                const params = new URLSearchParams({
-                    grade,
-                    feedback: feedback || ''
-                });
-    
-                fetch(`/api/submissions/grade/${submissionId}`, {
-                    method: 'POST',
-                    body: params
-                })
-                .then(response => {
-                    if (response.ok) {
-                        alert('Submission graded successfully');
-    
-                    } else {
-                        throw new Error('Grading failed');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error grading submission:', error);
-                    alert('Failed to grade submission');
-                });
-            }
-        }
-
-        function formatDate(dateString) {
-            const date = new Date(dateString);
-            const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-based
-            const day = String(date.getDate()).padStart(2, '0');
-            const year = date.getFullYear();
-            return `${month}/${day}/${year}`;
-        }
-
-        function exportAssignments() {
-
-            fetch('/api/assignments/bulk/extract', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (!Array.isArray(data)) throw new Error("Invalid response format");
-
-                const headers = Object.keys(data[0]);
-                const csvRows = [];
-
-                csvRows.push(headers.join(','));
-
-                data.forEach(row => {
-                    const values = headers.map(header => {
-                        const val = row[header];
-                        if (val == null) return '';
-                        const strVal = String(val);
-                        return /[",\n]/.test(strVal) ? `"${strVal.replace(/"/g, '""')}"` : strVal;
-                    });
-                    csvRows.push(values.join(','));
-                });
-
-                const csvString = csvRows.join('\n');
-                const blob = new Blob([csvString], { type: 'text/csv' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'assignments.csv';
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-            })
-            .catch(error => {
-                console.error('Error exporting assignments:', error);
-                alert('Failed to export assignments.');
-            })
-            .finally(() => {
-                exportButton.textContent = originalText;
-                exportButton.disabled = false;
+        $(document).ready(function () {
+            assignmentTable = $('#assignmentTable').DataTable();
+            studentTable = $('#studentsTable').DataTable({
+                paging: true,
+                searching: true,
+                info: true,
+                autoWidth: false,
+                columns: [
+                    { title: 'Name' },
+                    { title: 'Email' },
+                    { title: 'Total Submissions' },
+                    { title: 'Actions', orderable: false }
+                ]
             });
-        }
-
-
-        function exportIndividualAssignment(id) {
-            fetch(`/api/assignments/extract/${id}`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                const dataArray = Array.isArray(data) ? data : [data];
-                
-                if (dataArray.length === 0) {
-                    alert('No data to export.');
-                    return;
-                }
-                
-                const headers = Object.keys(dataArray[0]);
-                
-                const csvHeaders = headers.join(',');
-                
-                const csvRows = dataArray.map(item => {
-                    return headers.map(header => {
-                        const value = item[header] || '';
-                        const escapedValue = String(value).replace(/"/g, '""');
-                        return /[",\n\r]/.test(escapedValue) ? `"${escapedValue}"` : escapedValue;
-                    }).join(',');
-                });
-                
-                const csvContent = [csvHeaders, ...csvRows].join('\n');
-                
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                const url = URL.createObjectURL(blob);
-                
-                link.setAttribute('href', url);
-                link.setAttribute('download', `assignment_${id}_${new Date().toISOString().split('T')[0]}.csv`);
-                link.style.visibility = 'hidden';
-                
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                URL.revokeObjectURL(url);
-            })
-            .catch(error => {
-                console.error('Error exporting assignment:', error);
-                alert('Failed to export assignment.');
+            submissionsTable = $('#submissionsTable').DataTable({
+                paging: true,
+                searching: true,
+                info: true,
+                autoWidth: false,
+                columns: [
+                    { title: 'Student/Group' },
+                    { title: 'Content' },
+                    { title: 'Comments' },
+                    { title: 'Grade' },
+                    { title: 'Actions', orderable: false }
+                ]
             });
-        }
 
-        function exportSubmissions(id) {
-            fetch(`/api/submissions/assignment/${id}`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                const submissions = Array.isArray(data) ? data : [data];
-                
-                if (submissions.length === 0) {
-                    alert('No submissions to export.');
-                    return;
-                }
-                
-                const flattenedData = submissions.map(submission => {
-                    const flattened = {
-                        submission_id: submission.id,
-                        assignment_id: submission.assignment?.id || '',
-                        assignment_name: submission.assignment?.name || '',
-                        assignment_type: submission.assignment?.type || '',
-                        assignment_description: submission.assignment?.description || '',
-                        assignment_points: submission.assignment?.points || '',
-                        assignment_due_date: submission.assignment?.dueDate || '',
-                        assignment_timestamp: submission.assignment?.timestamp || '',
-                        student_id: submission.students?.[0]?.id || '',
-                        student_name: submission.students?.[0]?.name || '',
-                        student_email: submission.students?.[0]?.email || '',
-                        student_uid: submission.students?.[0]?.uid || '',
-                        content: submission.content || '',
-                        comment: submission.comment || '',
-                        grade: submission.grade || '',
-                        feedback: submission.feedback || '',
-                        is_late: submission.isLate || false
-                    };
-                    return flattened;
-                });
-                
-                const headers = Object.keys(flattenedData[0]);
-                
-                const csvHeaders = headers.join(',');
-                
-                const csvRows = flattenedData.map(item => {
-                    return headers.map(header => {
-                        const value = item[header] || '';
-                        const escapedValue = String(value).replace(/"/g, '""');
-                        return /[",\n\r]/.test(escapedValue) ? `"${escapedValue}"` : escapedValue;
-                    }).join(',');
-                });
-                
-                const csvContent = [csvHeaders, ...csvRows].join('\n');
-                
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                const url = URL.createObjectURL(blob);
-                
-                link.setAttribute('href', url);
-                link.setAttribute('download', `submissions_assignment_${id}_${new Date().toISOString().split('T')[0]}.csv`);
-                link.style.visibility = 'hidden';
-                
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                URL.revokeObjectURL(url);
-            })
-            .catch(error => {
-                console.error('Error exporting submissions:', error);
-                alert('Failed to export submissions.');
-            });
-        }
-        
-
+            onResourceModeChange();
+            fetchAssignments();
+            fetchStudents();
+        });
     </script>
 </th:block>
 

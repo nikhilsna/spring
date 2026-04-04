@@ -1,0 +1,193 @@
+package com.open.spring.mvc.assignments;
+
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.open.spring.mvc.S3uploads.FileHandler;
+import com.open.spring.mvc.person.Person;
+import com.open.spring.mvc.person.PersonJpaRepository;
+
+@Service
+public class AssignmentSubmissionUploadService {
+
+    private final FileHandler fileHandler;
+    private final PersonJpaRepository personRepo;
+
+    public AssignmentSubmissionUploadService(FileHandler fileHandler, PersonJpaRepository personRepo) {
+        this.fileHandler = fileHandler;
+        this.personRepo = personRepo;
+    }
+
+    public Map<String, Object> upload(
+            String assignmentName,
+            Long userId,
+            String username,
+            MultipartFile file,
+            String notes,
+            UserDetails userDetails) {
+
+        validateAuthentication(userDetails);
+        validateRequiredFields(assignmentName, userId, username, file);
+
+        Person authenticatedUser = getAuthenticatedUser(userDetails);
+        Person targetUser = getTargetUser(userId);
+
+        validateUsernameMatchesTarget(username, targetUser);
+        validateSubmitPermission(authenticatedUser, userId);
+
+        String originalFilename = sanitizeFilename(file);
+        String s3Filename = buildS3Filename(assignmentName, originalFilename);
+        String base64Data = toBase64(file);
+
+        String storedFilename = uploadToStorage(base64Data, s3Filename, targetUser.getUid());
+
+        return buildResponse(
+                assignmentName,
+                notes,
+                file,
+                authenticatedUser,
+                targetUser,
+                originalFilename,
+                s3Filename,
+                storedFilename);
+    }
+
+    private void validateAuthentication(UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new UploadException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
+    }
+
+    private void validateRequiredFields(String assignmentName, Long userId, String username, MultipartFile file) {
+        if (isBlank(assignmentName) || isBlank(username) || userId == null) {
+            throw new UploadException(HttpStatus.BAD_REQUEST, "assignmentName, userId, and username are required");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new UploadException(HttpStatus.BAD_REQUEST, "file is required");
+        }
+    }
+
+    private Person getAuthenticatedUser(UserDetails userDetails) {
+        Person authenticatedUser = personRepo.findByUid(userDetails.getUsername());
+        if (authenticatedUser == null) {
+            throw new UploadException(HttpStatus.UNAUTHORIZED, "Authenticated user not found");
+        }
+        return authenticatedUser;
+    }
+
+    private Person getTargetUser(Long userId) {
+        Person targetUser = personRepo.findById(userId).orElse(null);
+        if (targetUser == null) {
+            throw new UploadException(HttpStatus.NOT_FOUND, "Target user not found for userId=" + userId);
+        }
+        return targetUser;
+    }
+
+    private void validateUsernameMatchesTarget(String username, Person targetUser) {
+        boolean usernameMatchesUid = username.equalsIgnoreCase(targetUser.getUid());
+        boolean usernameMatchesName = username.equalsIgnoreCase(targetUser.getName());
+        if (!usernameMatchesUid && !usernameMatchesName) {
+            throw new UploadException(HttpStatus.BAD_REQUEST, "username does not match the provided userId");
+        }
+    }
+
+    private void validateSubmitPermission(Person authenticatedUser, Long userId) {
+        boolean privileged = authenticatedUser.hasRoleWithName("ROLE_TEACHER")
+                || authenticatedUser.hasRoleWithName("ROLE_ADMIN");
+        if (!privileged && !Objects.equals(authenticatedUser.getId(), userId)) {
+            throw new UploadException(HttpStatus.FORBIDDEN, "You can only submit assignments for your own account");
+        }
+    }
+
+    private String sanitizeFilename(MultipartFile file) {
+        String incomingName = file.getOriginalFilename() == null ? "submission.bin" : file.getOriginalFilename();
+        return Paths.get(incomingName).getFileName().toString();
+    }
+
+    private String buildS3Filename(String assignmentName, String originalFilename) {
+        return "assignment-submissions/"
+                + slugify(assignmentName)
+                + "/"
+                + Instant.now().toEpochMilli()
+                + "_"
+                + UUID.randomUUID()
+                + "_"
+                + originalFilename;
+    }
+
+    private String toBase64(MultipartFile file) {
+        try {
+            return Base64.getEncoder().encodeToString(file.getBytes());
+        } catch (Exception e) {
+            throw new UploadException(HttpStatus.BAD_REQUEST, "Error processing submission file: " + e.getMessage());
+        }
+    }
+
+    private String uploadToStorage(String base64Data, String s3Filename, String uid) {
+        String storedFilename = fileHandler.uploadFile(base64Data, s3Filename, uid);
+        if (storedFilename == null) {
+            throw new UploadException(HttpStatus.INTERNAL_SERVER_ERROR, "Upload failed. Check S3 configuration and retry.");
+        }
+        return storedFilename;
+    }
+
+    private Map<String, Object> buildResponse(
+            String assignmentName,
+            String notes,
+            MultipartFile file,
+            Person authenticatedUser,
+            Person targetUser,
+            String originalFilename,
+            String s3Filename,
+            String storedFilename) {
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Assignment submission uploaded successfully");
+        response.put("assignmentName", assignmentName);
+        response.put("userId", targetUser.getId());
+        response.put("username", targetUser.getUid());
+        response.put("displayName", targetUser.getName());
+        response.put("storedFilename", storedFilename);
+        response.put("storagePath", targetUser.getUid() + "/" + s3Filename);
+        response.put("originalFilename", originalFilename);
+        response.put("contentType", file.getContentType());
+        response.put("size", file.getSize());
+        response.put("notes", notes);
+        response.put("uploadedBy", authenticatedUser.getUid());
+        return response;
+    }
+
+    private String slugify(String input) {
+        String normalized = input.toLowerCase(Locale.ROOT).trim();
+        String slug = normalized.replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
+        return slug.isEmpty() ? "assignment" : slug;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    public static class UploadException extends RuntimeException {
+        private final HttpStatus status;
+
+        public UploadException(HttpStatus status, String message) {
+            super(message);
+            this.status = status;
+        }
+
+        public HttpStatus getStatus() {
+            return status;
+        }
+    }
+}

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assignment Tracker V2</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 24px;
+            background: #111;
+            color: #eee;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+        }
+
+        .hint {
+            color: #a8a8a8;
+            margin-bottom: 16px;
+        }
+
+        .actions {
+            margin-bottom: 16px;
+        }
+
+        .create-form {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(180px, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .create-form input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            background: #171717;
+            color: #eee;
+        }
+
+        button {
+            background: #2f7df6;
+            color: #fff;
+            border: 0;
+            border-radius: 6px;
+            padding: 8px 14px;
+            cursor: pointer;
+        }
+
+        .link-btn {
+            display: inline-block;
+            background: #2f7df6;
+            color: #fff;
+            border-radius: 6px;
+            padding: 6px 10px;
+            text-decoration: none;
+            font-size: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1b1b1b;
+        }
+
+        th, td {
+            border: 1px solid #333;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            background: #222;
+        }
+
+        .status {
+            margin-top: 10px;
+            color: #c5c5c5;
+            min-height: 22px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Assignment Tracker V2</h1>
+    <div class="hint">Minimal page for debugging. URL: /mvc/assignments/tracker-v2</div>
+    <div class="hint">Note: if a file resource is uploaded after a URL resource, the assignment switches to file and URL becomes blank by design.</div>
+
+    <form class="create-form" method="post" action="/mvc/assignments/tracker-v2/create">
+        <input name="customId" type="number" placeholder="Custom ID (optional)">
+        <input name="name" type="text" placeholder="Assignment name" required>
+        <input name="type" type="text" placeholder="Type" required>
+        <input name="description" type="text" placeholder="Description">
+        <input name="points" type="number" step="0.01" placeholder="Points" required>
+        <input name="dueDate" type="date" required>
+        <button type="submit">Create Assignment</button>
+    </form>
+
+    <div class="actions">
+        <a href="/mvc/assignments/tracker-v2"><button type="button">Reload Assignments</button></a>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Resource Type</th>
+                <th>Resource Filename</th>
+                <th>Resource URL</th>
+                <th>Storage Path</th>
+                <th>Uploaded By</th>
+                <th>Resource Access</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="assignment : ${assignments}">
+                <td th:text="${assignment.id}"></td>
+                <td th:text="${assignment.name}"></td>
+                <td th:text="${assignment.type}"></td>
+                <td th:text="${assignment.resourceType}"></td>
+                <td th:text="${assignment.resourceFilename}"></td>
+                <td th:text="${assignment.resourceUrl}"></td>
+                <td th:text="${assignment.resourceStoragePath}"></td>
+                <td th:text="${assignment.resourceStoragePath != null and !#strings.isEmpty(assignment.resourceStoragePath) ? #strings.substringBefore(assignment.resourceStoragePath, '/') : 'unknown'}"></td>
+                <td>
+                    <a class="link-btn"
+                       th:if="${assignment.resourceType == 'url' and assignment.resourceUrl != null and !#strings.isEmpty(assignment.resourceUrl)}"
+                       th:href="${assignment.resourceUrl}"
+                       target="_blank"
+                       rel="noopener noreferrer">Open URL</a>
+                    <a class="link-btn"
+                       th:if="${assignment.resourceType == 'file' and assignment.resourceStoragePath != null and !#strings.isEmpty(assignment.resourceStoragePath)}"
+                       th:href="@{/mvc/assignments/tracker-v2/file/{id}(id=${assignment.id})}">Download File</a>
+                    <span th:if="${assignment.resourceType == null or assignment.resourceType == 'none'}">None</span>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="status" th:text="'Loaded ' + ${#lists.size(assignments)} + ' assignments'"></div>
+</body>
+</html>

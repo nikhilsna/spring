@@ -290,11 +290,11 @@
         function buildChatSocketEndpoint() {
             const protocol = window.location.protocol;
             const hostname = window.location.hostname;
-            const port = String(chatSocketPort);
-            const isDefaultHttp = protocol === "http:" && port === "80";
-            const isDefaultHttps = protocol === "https:" && port === "443";
-            const authority = (isDefaultHttp || isDefaultHttps) ? hostname : `${hostname}:${port}`;
-            return `${protocol}//${authority}/ws-chat`;
+            // this is temporary, and needs to be replaced with a more permanent websocket implementation on port 8589
+            if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                return `${protocol}//${hostname}:${chatSocketPort}/ws-chat`;
+            }
+            return `${protocol}//${hostname}/ws-chat`;
         }
 
         // get table

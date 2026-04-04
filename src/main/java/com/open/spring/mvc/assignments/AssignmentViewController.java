@@ -1,18 +1,26 @@
 package com.open.spring.mvc.assignments;
 
+import java.util.Base64;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.open.spring.mvc.S3uploads.FileHandler;
 import com.open.spring.mvc.person.Person;
 import com.open.spring.mvc.person.PersonJpaRepository;
 
@@ -29,6 +37,9 @@ public class AssignmentViewController {
     @Autowired
     private AssignmentSubmissionJPA submissionRepo;
 
+    @Autowired
+    private FileHandler fileHandler;
+
     @GetMapping("/tracker")
     public String assignmentTracker(Model model, @AuthenticationPrincipal UserDetails userDetails) {
         String uid = userDetails.getUsername();
@@ -41,6 +52,114 @@ public class AssignmentViewController {
         }
 
         return "assignments/assignment_tracker";
+    }
+
+    @GetMapping("/tracker-v2")
+    public String assignmentTrackerV2(Model model, @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Authentication required");
+        }
+
+        String uid = userDetails.getUsername();
+        Person user = personRepository.findByUid(uid);
+        if (user == null || (!user.hasRoleWithName("ROLE_TEACHER") && !user.hasRoleWithName("ROLE_ADMIN"))) {
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN, "You must be a teacher or admin to access the assignment tracker"
+            );
+        }
+
+        model.addAttribute("assignments", assignmentRepository.findAll());
+        return "assignments/assignment_tracker_v2";
+    }
+
+    @PostMapping("/tracker-v2/create")
+    public String createAssignmentV2(
+            @RequestParam(required = false) Long customId,
+            @RequestParam String name,
+            @RequestParam String type,
+            @RequestParam(required = false, defaultValue = "") String description,
+            @RequestParam Double points,
+            @RequestParam String dueDate,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Authentication required");
+        }
+
+        String uid = userDetails.getUsername();
+        Person user = personRepository.findByUid(uid);
+        if (user == null || (!user.hasRoleWithName("ROLE_TEACHER") && !user.hasRoleWithName("ROLE_ADMIN"))) {
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN, "You must be a teacher or admin to create assignments"
+            );
+        }
+
+        String normalizedDueDate = dueDate;
+        if (dueDate != null && dueDate.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            String[] parts = dueDate.split("-");
+            normalizedDueDate = parts[1] + "/" + parts[2] + "/" + parts[0];
+        }
+
+        Assignment assignment = new Assignment(name, type, description, points, normalizedDueDate);
+        if (customId != null) {
+            if (assignmentRepository.findById(customId).isPresent()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Assignment ID already exists");
+            }
+            assignment.setId(customId);
+        }
+
+        assignmentRepository.save(assignment);
+        return "redirect:/mvc/assignments/tracker-v2";
+    }
+
+    @GetMapping("/tracker-v2/file/{id}")
+    public ResponseEntity<?> downloadAssignmentResourceFile(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        if (userDetails == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Authentication required");
+        }
+
+        String uid = userDetails.getUsername();
+        Person user = personRepository.findByUid(uid);
+        if (user == null || (!user.hasRoleWithName("ROLE_TEACHER") && !user.hasRoleWithName("ROLE_ADMIN"))) {
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN, "You must be a teacher or admin to access assignment files"
+            );
+        }
+
+        Assignment assignment = assignmentRepository.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Assignment not found"));
+
+        if (!"file".equalsIgnoreCase(assignment.getResourceType())) {
+            return ResponseEntity.badRequest().body("Assignment resource is not a file");
+        }
+
+        String storagePath = assignment.getResourceStoragePath();
+        if (storagePath == null || storagePath.isBlank() || !storagePath.contains("/")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Assignment file path missing or invalid");
+        }
+
+        int slash = storagePath.indexOf('/');
+        String ownerUid = storagePath.substring(0, slash);
+        String key = storagePath.substring(slash + 1);
+        String base64Data = fileHandler.decodeFile(ownerUid, key);
+        if (base64Data == null || base64Data.isBlank()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Assignment file content not found");
+        }
+
+        byte[] bytes = Base64.getDecoder().decode(base64Data);
+        String filename = assignment.getResourceFilename() == null || assignment.getResourceFilename().isBlank()
+            ? "assignment-resource.bin"
+            : assignment.getResourceFilename();
+
+        ByteArrayResource resource = new ByteArrayResource(bytes);
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+            .contentType(MediaType.APPLICATION_OCTET_STREAM)
+            .contentLength(bytes.length)
+            .body(resource);
     }
 
     @GetMapping

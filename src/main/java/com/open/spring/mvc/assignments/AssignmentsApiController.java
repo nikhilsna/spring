@@ -1,11 +1,15 @@
 package com.open.spring.mvc.assignments;
 
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -25,7 +29,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.multipart.MultipartFile;
 
+import com.open.spring.mvc.S3uploads.FileHandler;
 import com.open.spring.mvc.groups.GroupsJpaRepository;
 import com.open.spring.mvc.person.Person;
 import com.open.spring.mvc.person.PersonJpaRepository;
@@ -52,6 +58,9 @@ public class AssignmentsApiController {
     @Autowired
     private PersonJpaRepository personRepo;
 
+    @Autowired
+    private FileHandler fileHandler;
+
     @Getter
     @Setter
     public static class AssignmentDto {
@@ -62,6 +71,11 @@ public class AssignmentsApiController {
         public Double points;
         public String dueDate;
         public String timestamp;
+        public String resourceType;
+        public String resourceUrl;
+        public String resourceFilename;
+        public String resourceStoragePath;
+        public String resourceUploadedBy;
 
         public AssignmentDto(Assignment assignment) {
             this.id = assignment.getId();
@@ -71,6 +85,23 @@ public class AssignmentsApiController {
             this.points = assignment.getPoints();
             this.dueDate = assignment.getDueDate();
             this.timestamp = assignment.getTimestamp();
+            this.resourceType = assignment.getResourceType();
+            this.resourceUrl = assignment.getResourceUrl();
+            this.resourceFilename = assignment.getResourceFilename();
+            this.resourceStoragePath = assignment.getResourceStoragePath();
+            this.resourceUploadedBy = extractResourceUploader(assignment);
+        }
+
+        private static String extractResourceUploader(Assignment assignment) {
+            String path = assignment.getResourceStoragePath();
+            if (path == null || path.isBlank()) {
+                return "unknown";
+            }
+            int slash = path.indexOf('/');
+            if (slash <= 0) {
+                return "unknown";
+            }
+            return path.substring(0, slash);
         }
     }
 
@@ -106,11 +137,13 @@ public class AssignmentsApiController {
             @RequestParam String type,
             @RequestParam String description,
             @RequestParam Double points,
-            @RequestParam String dueDate
+            @RequestParam String dueDate,
+            @AuthenticationPrincipal UserDetails userDetails
     ) {
+        requireTeacherOrAdmin(userDetails);
         Assignment newAssignment = new Assignment(name, type, description, points, dueDate);
         Assignment savedAssignment = assignmentRepo.save(newAssignment);
-        return new ResponseEntity<>(savedAssignment, HttpStatus.CREATED);
+        return new ResponseEntity<>(new AssignmentDto(savedAssignment), HttpStatus.CREATED);
     }
 
     /**
@@ -130,9 +163,165 @@ public class AssignmentsApiController {
             map.put("dueDate", a.getDueDate());
             map.put("points", String.valueOf(a.getPoints()));
             map.put("type", a.getType());
+            map.put("resourceType", String.valueOf(a.getResourceType()));
+            map.put("resourceUrl", String.valueOf(a.getResourceUrl()));
+            map.put("resourceFilename", String.valueOf(a.getResourceFilename()));
+            map.put("resourceStoragePath", String.valueOf(a.getResourceStoragePath()));
+            map.put("resourceUploadedBy", extractResourceUploader(a));
             simple.add(map);
         }
         return new ResponseEntity<>(simple, HttpStatus.OK);
+    }
+
+    @Getter
+    @Setter
+    public static class AssignmentResourceUrlDto {
+        public String url;
+    }
+
+    /**
+     * Attach or update a URL resource on an existing assignment by ID.
+     */
+    @PostMapping("/{id}/resource/url")
+    public ResponseEntity<?> attachUrlResource(
+            @PathVariable Long id,
+            @RequestBody AssignmentResourceUrlDto request,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        Person user = requireTeacherOrAdmin(userDetails);
+
+        if (request == null || request.url == null || request.url.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "url is required"));
+        }
+
+        Assignment assignment = assignmentRepo.findById(id).orElse(null);
+        if (assignment == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Assignment not found"));
+        }
+
+        assignment.setUrlResource(request.url.trim(), user.getUid());
+        Assignment saved = assignmentRepo.save(assignment);
+        return ResponseEntity.ok(new AssignmentDto(saved));
+    }
+
+    /**
+     * Attach or update a file resource on an existing assignment by ID.
+     */
+    @PostMapping(value = "/{id}/resource/file", consumes = "multipart/form-data")
+    public ResponseEntity<?> attachFileResource(
+            @PathVariable Long id,
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        Person user = requireTeacherOrAdmin(userDetails);
+
+        Assignment assignment = assignmentRepo.findById(id).orElse(null);
+        if (assignment == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Assignment not found"));
+        }
+
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "file is required"));
+        }
+
+        try {
+            String incomingName = file.getOriginalFilename() == null ? "resource.bin" : file.getOriginalFilename();
+            String originalFilename = Paths.get(incomingName).getFileName().toString();
+            String s3Key = "assignment-resources/"
+                    + id
+                    + "/"
+                    + Instant.now().toEpochMilli()
+                    + "_"
+                    + UUID.randomUUID()
+                    + "_"
+                    + originalFilename;
+            String base64Data = Base64.getEncoder().encodeToString(file.getBytes());
+
+            String storedFilename = fileHandler.uploadFile(base64Data, s3Key, user.getUid());
+            if (storedFilename == null) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(Map.of("error", "Failed to upload file resource"));
+            }
+
+            assignment.setFileResource(originalFilename, user.getUid() + "/" + s3Key);
+            Assignment saved = assignmentRepo.save(assignment);
+            return ResponseEntity.ok(new AssignmentDto(saved));
+        } catch (Exception e) {
+            logger.error("Error uploading assignment resource file", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Invalid file upload: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Read back file resource payload for an assignment by ID.
+     */
+    @GetMapping("/{id}/resource/file-content")
+    public ResponseEntity<?> getFileResourceContent(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        requireTeacherOrAdmin(userDetails);
+
+        Assignment assignment = assignmentRepo.findById(id).orElse(null);
+        if (assignment == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Assignment not found"));
+        }
+
+        if (!"file".equalsIgnoreCase(defaultString(assignment.getResourceType(), ""))) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Assignment does not have a file resource"));
+        }
+
+        String storagePath = assignment.getResourceStoragePath();
+        if (storagePath == null || storagePath.isBlank()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No file storage path set"));
+        }
+
+        int slash = storagePath.indexOf('/');
+        if (slash <= 0 || slash >= storagePath.length() - 1) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Invalid file storage path format"));
+        }
+
+        String uid = storagePath.substring(0, slash);
+        String key = storagePath.substring(slash + 1);
+        String base64Data = fileHandler.decodeFile(uid, key);
+        if (base64Data == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "File content not found"));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "assignmentId", assignment.getId(),
+                "filename", defaultString(assignment.getResourceFilename(), "resource.bin"),
+                "storagePath", storagePath,
+                "base64Data", base64Data
+        ));
+    }
+
+    /**
+     * Provide a frontmatter YAML snippet for frontend content linked by assignment ID.
+     */
+    @GetMapping("/{id}/frontmatter")
+    public ResponseEntity<?> assignmentFrontmatterSnippet(@PathVariable Long id) {
+        Assignment assignment = assignmentRepo.findById(id).orElse(null);
+        if (assignment == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Assignment not found"));
+        }
+
+        StringBuilder snippet = new StringBuilder();
+        snippet.append("assignment_id: ").append(assignment.getId()).append("\n");
+        snippet.append("assignment_name: \"").append(escapeYaml(assignment.getName())).append("\"\n");
+        snippet.append("assignment_type: \"").append(escapeYaml(assignment.getType())).append("\"\n");
+        snippet.append("assignment_due_date: \"").append(escapeYaml(assignment.getDueDate())).append("\"\n");
+        snippet.append("assignment_resource_type: \"").append(escapeYaml(defaultString(assignment.getResourceType(), "none"))).append("\"\n");
+        snippet.append("assignment_resource_url: \"").append(escapeYaml(defaultString(assignment.getResourceUrl(), ""))).append("\"\n");
+        snippet.append("assignment_resource_file: \"").append(escapeYaml(defaultString(assignment.getResourceStoragePath(), ""))).append("\"\n");
+
+        return ResponseEntity.ok(Map.of(
+                "assignmentId", assignment.getId(),
+                "frontmatter", snippet.toString(),
+                "resourceType", defaultString(assignment.getResourceType(), "none")
+        ));
     }
 
     /**
@@ -666,5 +855,36 @@ public class AssignmentsApiController {
         Assignment assignment = curAssignment.get();
         AssignmentDto assignmentDto = new AssignmentDto(assignment);
         return new ResponseEntity<>(assignmentDto, HttpStatus.OK);
+    }
+
+    private Person requireTeacherOrAdmin(UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Authentication required");
+        }
+        Person user = personRepo.findByUid(userDetails.getUsername());
+        if (user == null || !(user.hasRoleWithName("ROLE_TEACHER") || user.hasRoleWithName("ROLE_ADMIN"))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Teacher or admin role required");
+        }
+        return user;
+    }
+
+    private String defaultString(String value, String fallback) {
+        return value == null ? fallback : value;
+    }
+
+    private String escapeYaml(String value) {
+        return value == null ? "" : value.replace("\"", "\\\"");
+    }
+
+    private String extractResourceUploader(Assignment assignment) {
+        String path = assignment.getResourceStoragePath();
+        if (path == null || path.isBlank()) {
+            return "unknown";
+        }
+        int slash = path.indexOf('/');
+        if (slash <= 0) {
+            return "unknown";
+        }
+        return path.substring(0, slash);
     }
 }

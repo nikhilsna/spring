@@ -18,13 +18,15 @@ Usage:
 
 import os
 import sys
-import shutil
-import subprocess
-import signal
-import time
-import socket
-from datetime import datetime
 from pathlib import Path
+
+from migration_utils import (
+    MigrationError,
+    SpringBootSchemaRunner,
+    SqliteDatabaseFiles,
+    ensure_port_not_in_use,
+    print_header,
+)
 
 # Configuration
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -33,125 +35,9 @@ BACKUP_DIR = PROJECT_ROOT / "volumes" / "backups"
 SPRING_PORT = 8585
 LOG_FILE = "/tmp/db_init.log"
 
-
-def print_header(title):
-    """Print a formatted header"""
-    print("\n" + "=" * 60)
-    print(title)
-    print("=" * 60 + "\n")
-
-
-def is_port_in_use(port):
-    """Check if a port is in use"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('localhost', port)) == 0
-
-
-def backup_database():
-    """Backup the current database file"""
-    if not DB_FILE.exists():
-        print("No existing database file to backup")
-        return
-    
-    # Create backup directory
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    
-    # Create backup with timestamp
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_file = BACKUP_DIR / f"sqlite_backup_{timestamp}.db"
-    
-    shutil.copy2(DB_FILE, backup_file)
-    print(f"Database backed up to: {backup_file}")
-    
-    # Backup WAL and SHM files if they exist
-    wal_file = Path(str(DB_FILE) + "-wal")
-    shm_file = Path(str(DB_FILE) + "-shm")
-    
-    if wal_file.exists():
-        shutil.copy2(wal_file, BACKUP_DIR / f"sqlite_backup_{timestamp}.db-wal")
-        print("WAL file backed up")
-    
-    if shm_file.exists():
-        shutil.copy2(shm_file, BACKUP_DIR / f"sqlite_backup_{timestamp}.db-shm")
-        print("SHM file backed up")
-
-
-def remove_database():
-    """Remove old database files"""
-    print("\nRemoving old database...")
-    
-    files_to_remove = [
-        DB_FILE,
-        Path(str(DB_FILE) + "-wal"),
-        Path(str(DB_FILE) + "-shm")
-    ]
-    
-    for file in files_to_remove:
-        if file.exists():
-            file.unlink()
-    
-    print("Old database removed")
-
-
-def wait_for_spring_boot(timeout=180):
-    """Wait for Spring Boot to start (includes compilation time)"""
-    print("\nWaiting for Spring Boot to start", end="", flush=True)
-    start_time = time.time()
-    
-    while time.time() - start_time < timeout:
-        if is_port_in_use(SPRING_PORT):
-            print(" OK")
-            time.sleep(5)  # Give ModelInit time to run
-            return True
-        print(".", end="", flush=True)
-        time.sleep(1)
-    
-    print("\nTimeout waiting for Spring Boot to start")
-    return False
-
-
-def start_spring_boot_temp():
-    """Start Spring Boot temporarily to create schema and load data"""
-    print("\nStarting Spring Boot to recreate schema and load default data...")
-    print("(This will take a few seconds...)")
-    
-    # Start Spring Boot with ddl-auto=create
-    process = subprocess.Popen(
-        ["./mvnw", "spring-boot:run", 
-         "-Dspring-boot.run.arguments=--spring.jpa.hibernate.ddl-auto=create"],
-        stdout=open(LOG_FILE, 'w'),
-        stderr=subprocess.STDOUT,
-        cwd=PROJECT_ROOT,
-        preexec_fn=os.setsid  # Create new process group for clean shutdown
-    )
-    
-    # Wait for application to start
-    if not wait_for_spring_boot():
-        print(f"\nApplication failed to start. Check {LOG_FILE} for errors")
-        process.terminate()
-        sys.exit(1)
-    
-    # Stop the application
-    print("\nStopping application...")
-    try:
-        # Send SIGTERM to process group
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        # Force kill if it doesn't stop gracefully
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-        process.wait()
-    
-    time.sleep(2)  # Give it time to shutdown cleanly
-    print("Application stopped")
-
-
 def check_spring_boot_running():
     """Check if Spring Boot is already running"""
-    if is_port_in_use(SPRING_PORT):
-        print(f"WARNING: Spring Boot application is running on port {SPRING_PORT}")
-        print("  Please stop it first: pkill -f 'spring-boot:run'")
-        sys.exit(1)
+    ensure_port_not_in_use(SPRING_PORT, "Please stop it first: pkill -f 'spring-boot:run'")
 
 
 def get_user_confirmation():
@@ -185,13 +71,17 @@ def main():
         sys.exit(0)
     
     # Step 3: Backup database
-    backup_database()
+    db_files = SqliteDatabaseFiles(DB_FILE, BACKUP_DIR)
+    db_files.backup()
     
     # Step 4: Remove old database
-    remove_database()
+    db_files.remove()
     
     # Step 5: Start Spring Boot to recreate schema and load data
-    start_spring_boot_temp()
+    print("\nStarting Spring Boot to recreate schema and load default data...")
+    print("(This will take a few seconds...)")
+    runner = SpringBootSchemaRunner(PROJECT_ROOT, LOG_FILE, SPRING_PORT)
+    runner.run(timeout_seconds=180, settle_seconds=5)
     
     # Success message
     print_header("DATABASE RESET COMPLETE")

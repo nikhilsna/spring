@@ -8,3 +8,4 @@ COPY . /app
 RUN ./mvnw package
 CMD ["java", "-jar", "target/spring-0.0.1-SNAPSHOT.jar"]
 EXPOSE 8585
+EXPOSE 8589

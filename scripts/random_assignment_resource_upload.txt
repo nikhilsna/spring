@@ -1,0 +1,3 @@
+Assignment resource upload test
+timestamp=1775003286
+nonce=763j13zw57hf8bjo

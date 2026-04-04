@@ -76,6 +76,12 @@ public class Assignment {
     @NotNull
     private Double points;
 
+    // Optional assignment resource metadata linked to this assignment ID.
+    private String resourceType;
+    private String resourceUrl;
+    private String resourceFilename;
+    private String resourceStoragePath;
+
     private Long presentationLength;
 
     @Convert(converter = AssignmentQueueConverter.class)
@@ -119,8 +125,34 @@ public class Assignment {
         this.points = points;
         this.dueDate = dueDate; 
         this.timestamp = LocalDateTime.now().format(formatter); // fixed formatting ahhh
+        this.resourceType = "none";
+        this.resourceUrl = null;
+        this.resourceFilename = null;
+        this.resourceStoragePath = null;
         // This line is not needed as converter will reset to null after it takes in an empty queue 
         // this.assignmentQueue = new AssignmentQueue();
+    }
+
+    public void setUrlResource(String url) {
+        this.resourceType = "url";
+        this.resourceUrl = url;
+        this.resourceFilename = null;
+        this.resourceStoragePath = null;
+    }
+
+    public void setUrlResource(String url, String uploaderUid) {
+        this.resourceType = "url";
+        this.resourceUrl = url;
+        this.resourceFilename = null;
+        this.resourceStoragePath =
+            (uploaderUid == null || uploaderUid.isBlank()) ? null : uploaderUid + "/url-resource";
+    }
+
+    public void setFileResource(String originalFilename, String storagePath) {
+        this.resourceType = "file";
+        this.resourceFilename = originalFilename;
+        this.resourceStoragePath = storagePath;
+        this.resourceUrl = null;
     }
 
     public static Assignment[] init() {

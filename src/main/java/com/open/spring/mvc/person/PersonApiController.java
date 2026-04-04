@@ -10,6 +10,7 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -32,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.open.spring.mvc.bathroom.TinkleJPARepository;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -69,6 +71,9 @@ public class PersonApiController {
 
     @Autowired
     private FaceRecognitionService faceRecognitionService;
+
+    @Autowired
+    private TinkleJPARepository tinkleRepository;
 
     /**
      * Retrieves a Person entity by current user of JWT token.
@@ -312,6 +317,22 @@ public class PersonApiController {
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * Retrieves a Person entity by its UID.
+     *
+     * @param uid The UID of the Person entity to retrieve.
+     * @return A ResponseEntity containing the Person entity if found, or a
+     *         NOT_FOUND status if not found.
+     */
+    @GetMapping("/person/uid/{uid}")
+    @PreAuthorize("hasAnyAuthority('ROLE_USER','ROLE_STUDENT','ROLE_TEACHER','ROLE_ADMIN')")
+    public ResponseEntity<Person> getPersonByUid(@PathVariable String uid) {
+        Person person = repository.findByUid(uid);
+        if (person != null) {
+            return new ResponseEntity<>(person, HttpStatus.OK);
+        }
+        return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    }
 
     /**
      * Delete a Person entity by its ID.
@@ -380,6 +401,14 @@ public class PersonApiController {
             return new ResponseEntity<>(responseObject.toString(), responseHeaders, HttpStatus.CONFLICT);
         }
 
+        if (personDto.getSid() != null && !personDto.getSid().isBlank() && tinkleRepository.findBySid(personDto.getSid()).isPresent()) {
+            HttpHeaders responseHeaders = new HttpHeaders();
+            responseHeaders.setContentType(MediaType.APPLICATION_JSON);
+            JSONObject responseObject = new JSONObject();
+            responseObject.put("error", "A person with sid '" + personDto.getSid() + "' already exists");
+            return new ResponseEntity<>(responseObject.toString(), responseHeaders, HttpStatus.CONFLICT);
+        }
+
         // Use canonical Spring Security role naming (ROLE_*) for new accounts.
         PersonRole defaultRole = personDetailsService.findRole("ROLE_USER");
         if (defaultRole == null) {
@@ -398,7 +427,15 @@ public class PersonApiController {
         Person person = new Person(personDto.getEmail(), personDto.getUid(), personDto.getPassword(),
                 personDto.getSid(), personDto.getName(), "/images/default.png", true, defaultRole);
 
-        personDetailsService.save(person);
+        try {
+            personDetailsService.save(person);
+        } catch (DataIntegrityViolationException e) {
+            HttpHeaders responseHeaders = new HttpHeaders();
+            responseHeaders.setContentType(MediaType.APPLICATION_JSON);
+            JSONObject responseObject = new JSONObject();
+            responseObject.put("error", "Unable to create user due to duplicate constrained fields (likely uid/email/sid)");
+            return new ResponseEntity<>(responseObject.toString(), responseHeaders, HttpStatus.CONFLICT);
+        }
 
         HttpHeaders responseHeaders = new HttpHeaders();
         responseHeaders.setContentType(MediaType.APPLICATION_JSON);

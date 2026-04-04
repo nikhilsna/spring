@@ -16,15 +16,20 @@ Usage:
 import os
 import sys
 import shutil
-import subprocess
-import signal
-import time
-import socket
 import json
 import sqlite3
 import requests
 from datetime import datetime
 from pathlib import Path
+
+from migration_utils import (
+    MigrationError,
+    SkipModelInitFlag,
+    SpringBootSchemaRunner,
+    SqliteDatabaseFiles,
+    ensure_port_not_in_use,
+    print_header,
+)
 
 # Configuration
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -42,21 +47,6 @@ DATA_URL = f"{PROD_URL}/api/exports/getAll"
 
 # Credentials
 ADMIN_UID = "toby"
-
-
-# --- Utilities ---
-
-def print_header(title):
-    """Print a formatted section header"""
-    print("\n" + "=" * 60)
-    print(title)
-    print("=" * 60 + "\n")
-
-
-def is_port_in_use(port):
-    """Return True if the given TCP port is already bound"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('localhost', port)) == 0
 
 
 def coerce_value(value):
@@ -168,95 +158,7 @@ def load_local_json():
     return None
 
 
-# --- Database backup & removal ---
-
-def backup_database():
-    """Copy the current SQLite database (and WAL/SHM) to the backup directory"""
-    if not DB_FILE.exists():
-        print("No existing database file to backup")
-        return
-
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_file = BACKUP_DIR / f"sqlite_backup_{timestamp}.db"
-    shutil.copy2(DB_FILE, backup_file)
-    print(f"Database backed up to: {backup_file}")
-
-    for ext in ("-wal", "-shm"):
-        src = Path(str(DB_FILE) + ext)
-        if src.exists():
-            shutil.copy2(src, BACKUP_DIR / f"sqlite_backup_{timestamp}.db{ext}")
-            print(f"{ext.lstrip('-').upper()} file backed up")
-
-
-def remove_database():
-    """Delete the SQLite database and its WAL/SHM files"""
-    print("\nRemoving old database...")
-    for ext in ("", "-wal", "-shm"):
-        f = Path(str(DB_FILE) + ext)
-        if f.exists():
-            f.unlink()
-    print("Old database removed")
-
-
-# --- Skip-ModelInit flag ---
-
-def create_skip_flag():
-    """Create the flag file that tells Spring Boot to skip ModelInit"""
-    SKIP_FLAG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SKIP_FLAG_FILE.touch()
-    print(f"Created skip-modelinit flag at {SKIP_FLAG_FILE}")
-
-
-def remove_skip_flag():
-    """Remove the ModelInit skip flag if it exists"""
-    if SKIP_FLAG_FILE.exists():
-        SKIP_FLAG_FILE.unlink()
-        print("Removed skip-modelinit flag")
-
-
 # --- Schema recreation via Spring Boot ---
-
-def wait_for_spring_boot(timeout=180):
-    """Block until Spring Boot is listening on SPRING_PORT (or timeout)"""
-    print("Waiting for Spring Boot", end="", flush=True)
-    start_time = time.time()
-
-    while time.time() - start_time < timeout:
-        if is_port_in_use(SPRING_PORT):
-            print(" OK")
-            time.sleep(5)  # allow schema creation to finish
-            return True
-        print(".", end="", flush=True)
-        time.sleep(1)
-
-    print("\nTimeout waiting for Spring Boot to start")
-    return False
-
-
-def start_spring_boot_for_schema():
-    """Launch Spring Boot with ddl-auto=create; return the process handle"""
-    return subprocess.Popen(
-        ["./mvnw", "spring-boot:run",
-         "-Dspring-boot.run.arguments=--spring.jpa.hibernate.ddl-auto=create"],
-        stdout=open(LOG_FILE, 'w'),
-        stderr=subprocess.STDOUT,
-        cwd=PROJECT_ROOT,
-        preexec_fn=os.setsid,
-    )
-
-
-def stop_spring_boot(process):
-    """Gracefully terminate a Spring Boot subprocess"""
-    print("\nStopping temporary instance...")
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-        process.wait()
-    time.sleep(2)
-    print("Temporary instance stopped")
 
 
 def recreate_schema():
@@ -265,18 +167,14 @@ def recreate_schema():
     print("(ModelInit will be skipped to avoid conflicts)")
     print("(This will take a few seconds...)")
 
-    create_skip_flag()
+    runner = SpringBootSchemaRunner(PROJECT_ROOT, LOG_FILE, SPRING_PORT)
+    skip_flag = SkipModelInitFlag(SKIP_FLAG_FILE)
+
+    skip_flag.create()
     try:
-        process = start_spring_boot_for_schema()
-
-        if not wait_for_spring_boot():
-            print(f"\nApplication failed to start. Check {LOG_FILE} for errors")
-            process.terminate()
-            sys.exit(1)
-
-        stop_spring_boot(process)
+        runner.run(timeout_seconds=180, settle_seconds=5)
     finally:
-        remove_skip_flag()
+        skip_flag.remove()
 
 
 # --- SQLite import ---
@@ -391,10 +289,7 @@ def import_data_to_sqlite(data):
 
 def check_spring_boot_not_running():
     """Exit with an error if Spring Boot is already running on SPRING_PORT"""
-    if is_port_in_use(SPRING_PORT):
-        print(f"WARNING: Spring Boot application is running on port {SPRING_PORT}")
-        print("  Please stop it first: pkill -f 'spring-boot:run'")
-        sys.exit(1)
+    ensure_port_not_in_use(SPRING_PORT, "Please stop it first: pkill -f 'spring-boot:run'")
 
 
 def get_user_confirmation():
@@ -437,8 +332,9 @@ def main():
             print("No remote or local data available for import")
             sys.exit(1)
 
-    backup_database()
-    remove_database()
+    db_files = SqliteDatabaseFiles(DB_FILE, BACKUP_DIR)
+    db_files.backup()
+    db_files.remove()
     recreate_schema()
     import_data_to_sqlite(remote_data)
 
@@ -455,13 +351,15 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n\nInterrupted by user")
-        if SKIP_FLAG_FILE.exists():
-            SKIP_FLAG_FILE.unlink()
+        SkipModelInitFlag(SKIP_FLAG_FILE).remove()
+        sys.exit(1)
+    except MigrationError as e:
+        print(f"\nMigration error: {e}", file=sys.stderr)
+        SkipModelInitFlag(SKIP_FLAG_FILE).remove()
         sys.exit(1)
     except Exception as e:
         print(f"\nAn error occurred: {e}", file=sys.stderr)
-        if SKIP_FLAG_FILE.exists():
-            SKIP_FLAG_FILE.unlink()
+        SkipModelInitFlag(SKIP_FLAG_FILE).remove()
         import traceback
         traceback.print_exc()
         sys.exit(1)
