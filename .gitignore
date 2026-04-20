@@ -24,6 +24,8 @@ venv/
 *.iws
 *.iml
 *.ipr
+*.pyc
+*.bak
 
 ### NetBeans ###
 /nbproject/private/

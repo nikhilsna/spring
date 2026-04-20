@@ -157,11 +157,23 @@ def get_table_schema(mysql_conn, table_name):
 
 
 def adapt_mysql_to_sqlite_schema(mysql_schema):
-    """Adapt MySQL CREATE TABLE statement to SQLite-compatible format (FINAL FIX)"""
-    # Basic adaptations
+    """Adapt MySQL CREATE TABLE statement to SQLite-compatible format."""
+    import re
+
     sqlite_schema = mysql_schema
-    
-    # Replace MySQL-specific types with SQLite equivalents
+
+    # Preserve the Hibernate session id as a fixed-width string so it can
+    # round-trip back into MySQL primary keys without type issues.
+    sqlite_schema = re.sub(
+        r'\bhib_sess_id\b\s+CHAR\s*\(\s*36\s*\)',
+        'hib_sess_id CHAR(36)',
+        sqlite_schema,
+        flags=re.IGNORECASE,
+    )
+
+    # Handle ENUM/SET including multiline definitions before other substitutions.
+    sqlite_schema = re.sub(r'\b(ENUM|SET)\s*\(.*?\)', 'TEXT', sqlite_schema, flags=re.IGNORECASE | re.DOTALL)
+
     replacements = [
         (r'\bTINYINT\b', 'INTEGER'),
         (r'\bSMALLINT\b', 'INTEGER'),
@@ -172,48 +184,53 @@ def adapt_mysql_to_sqlite_schema(mysql_schema):
         (r'\bMEDIUMTEXT\b', 'TEXT'),
         (r'\bLONGTEXT\b', 'TEXT'),
         (r'\bDATETIME\b', 'TEXT'),
-        # --- CRITICAL FIX: Removed the generic (r'\bTIMESTAMP\b', 'TEXT') replacement
-        # --- as it was causing the column name 'timestamp' to be replaced with 'TEXT'.
         (r'\bJSON\b', 'TEXT'),
         (r'\bJSONB\b', 'TEXT'),
         (r'\bBLOB\b', 'BLOB'),
         (r'\bLONGBLOB\b', 'BLOB'),
-
-        # FIX: Robust conversion for ENUM, SET, VARCHAR/CHAR to handle length specifiers
-        (r'\b(ENUM|SET)\s*\(.*?\)', 'TEXT'),  # Converts ENUM/SET and its options to TEXT
-        (r'\bVARCHAR\s*\(\s*\d+\s*\)', 'TEXT'), # Converts VARCHAR(N) to TEXT
-        (r'\bCHAR\s*\(\s*\d+\s*\)', 'TEXT'),    # Converts CHAR(N) to TEXT
         (r'\bTINYBLOB\b', 'BLOB'),
+        (r'\bVARCHAR\s*\(\s*\d+\s*\)', 'TEXT'),
+        (r'\bCHAR\s*\(\s*\d+\s*\)', 'TEXT'),
+        (r'\bUNSIGNED\b', ''),
+        (r'\bZEROFILL\b', ''),
+        (r'\bON\s+UPDATE\s+CURRENT_TIMESTAMP(?:\(\d+\))?\b', ''),
     ]
-    
-    import re
+
     for pattern, replacement in replacements:
         sqlite_schema = re.sub(pattern, replacement, sqlite_schema, flags=re.IGNORECASE)
-    
-    # Remove MySQL-specific options
+
+    # Drop MySQL index/key declarations; keep PK/FK/UNIQUE constraints only.
+    sqlite_schema = re.sub(r',\s*(?:UNIQUE\s+)?KEY\s+`[^`]+`\s*\([^\)]*\)', '', sqlite_schema, flags=re.IGNORECASE)
+
+    # Drop explicit MySQL constraint names but keep constraint content.
+    sqlite_schema = re.sub(r'\bCONSTRAINT\s+`[^`]+`\s+', '', sqlite_schema, flags=re.IGNORECASE)
+
+    # Remove table-level MySQL options.
     sqlite_schema = re.sub(r'ENGINE=\w+', '', sqlite_schema, flags=re.IGNORECASE)
     sqlite_schema = re.sub(r'DEFAULT CHARSET=\w+', '', sqlite_schema, flags=re.IGNORECASE)
     sqlite_schema = re.sub(r'COLLATE=\w+', '', sqlite_schema, flags=re.IGNORECASE)
     sqlite_schema = re.sub(r'AUTO_INCREMENT=\d+', '', sqlite_schema, flags=re.IGNORECASE)
-    
-    # Remove collation sequences from column definitions (e.g., COLLATE utf8mb4_unicode_ci)
+
+    # Remove column-level collation and charset hints.
     sqlite_schema = re.sub(r'\s+COLLATE\s+[`\'"]?[a-zA-Z0-9_\-\.]+[`\'"]?', '', sqlite_schema, flags=re.IGNORECASE)
-    
-    # Remove character set specifications from column definitions (e.g., CHARACTER SET utf8mb4)
     sqlite_schema = re.sub(r'\s+CHARACTER\s+SET\s+[`\'"]?[a-zA-Z0-9_\-\.]+[`\'"]?', '', sqlite_schema, flags=re.IGNORECASE)
     sqlite_schema = re.sub(r'\s+CHARSET\s+[`\'"]?[a-zA-Z0-9_\-\.]+[`\'"]?', '', sqlite_schema, flags=re.IGNORECASE)
-    
-    # Multiple passes for cleanup
-    for _ in range(3):
-        sqlite_schema = re.sub(r'\s+COLLATE\s+[a-zA-Z0-9_\-\.]+', '', sqlite_schema, flags=re.IGNORECASE)
-    
-    # Remove trailing commas before closing parenthesis
+
+    # MySQL may emit charset-prefixed literals in CHECK constraints, e.g.
+    # _utf8mb4'NOTE'. SQLite cannot parse these prefixes.
+    sqlite_schema = re.sub(r"_utf8mb4\s*'([^']*)'", r"'\1'", sqlite_schema, flags=re.IGNORECASE)
+
+    # Cleanup commas and whitespace.
     sqlite_schema = re.sub(r',\s*\)', ')', sqlite_schema)
-    
-    # Clean up multiple spaces and normalize whitespace
-    sqlite_schema = re.sub(r'\s+', ' ', sqlite_schema)
-    sqlite_schema = sqlite_schema.strip()
-    
+    sqlite_schema = re.sub(r'\s+', ' ', sqlite_schema).strip()
+
+    sqlite_schema = re.sub(
+        r'([`"]?hib_sess_id[`"]?\s+)TEXT\b',
+        r'\1CHAR(36)',
+        sqlite_schema,
+        flags=re.IGNORECASE,
+    )
+
     return sqlite_schema
 
 
@@ -241,8 +258,27 @@ def copy_table_data(mysql_conn, sqlite_conn, table_name):
         # Insert data into SQLite
         insert_sql = f"INSERT INTO `{table_name}` ({columns_str}) VALUES ({placeholders})"
         
-        sqlite_cursor.executemany(insert_sql, rows)
-        sqlite_conn.commit()
+        try:
+            sqlite_cursor.executemany(insert_sql, rows)
+            sqlite_conn.commit()
+        except Exception:
+            sqlite_conn.rollback()
+            fixed = 0
+            failed = 0
+            for row in rows:
+                mutable = list(row)
+                for i, col in enumerate(columns):
+                    if mutable[i] is None and col.lower() in {"created_at", "updated_at", "last_updated", "timestamp"}:
+                        mutable[i] = "1970-01-01 00:00:00"
+                try:
+                    sqlite_cursor.execute(insert_sql, mutable)
+                    fixed += 1
+                except Exception:
+                    failed += 1
+            sqlite_conn.commit()
+            if failed:
+                print(f"  Table '{table_name}': {fixed} rows copied, {failed} rows skipped due to constraints")
+                return
         
         print(f"  Table '{table_name}': {len(rows)} rows copied")
         
