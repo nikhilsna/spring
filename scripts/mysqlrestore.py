@@ -173,6 +173,15 @@ def adapt_sqlite_to_mysql_schema(sqlite_schema, table_name):
     # Basic type conversions
     import re
 
+    # Keep Hibernate session ids indexable in MySQL. SQLite backups may store
+    # them as TEXT, but MySQL cannot use TEXT in a PRIMARY KEY without a length.
+    mysql_schema = re.sub(
+        r'([`"]?hib_sess_id[`"]?\s+)(?:TEXT|VARCHAR\s*\(\s*\d+\s*\))\b',
+        r'\1CHAR(36)',
+        mysql_schema,
+        flags=re.IGNORECASE,
+    )
+
     mysql_schema = re.sub(
         r'(?is)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([`"]?)[^\s(`"]+\1\s*\(',
         f'CREATE TABLE `{table_name}` (',
@@ -198,6 +207,13 @@ def adapt_sqlite_to_mysql_schema(sqlite_schema, table_name):
     mysql_schema = re.sub(
         r'\bPRIMARY\s+KEY\s+AUTOINCREMENT\b',
         'AUTO_INCREMENT PRIMARY KEY',
+        mysql_schema,
+        flags=re.IGNORECASE,
+    )
+
+    mysql_schema = re.sub(
+        r'([`"]?hib_sess_id[`"]?\s+)TEXT\b',
+        r'\1CHAR(36)',
         mysql_schema,
         flags=re.IGNORECASE,
     )
@@ -315,6 +331,8 @@ def restore_sqlite_to_mysql(backup_file, host, port, user, password, database, f
         
         # Restore schema and data for each table
         print("\nRestoring tables...")
+        failed_tables = []
+        restored_tables = 0
         for table_name in tables:
             print(f"\nProcessing table: {table_name}")
             
@@ -322,6 +340,7 @@ def restore_sqlite_to_mysql(backup_file, host, port, user, password, database, f
             sqlite_schema = get_sqlite_table_schema(sqlite_conn, table_name)
             if not sqlite_schema:
                 print(f"  Warning: Could not get schema for '{table_name}', skipping")
+                failed_tables.append((table_name, "missing schema"))
                 continue
             
             # Adapt schema for MySQL
@@ -336,13 +355,22 @@ def restore_sqlite_to_mysql(backup_file, host, port, user, password, database, f
                 mysql_cursor.close()
             except Error as e:
                 print(f"  Error creating table '{table_name}' in MySQL: {e}")
+                failed_tables.append((table_name, str(e)))
                 continue
             
             # Copy data
             copy_table_data(sqlite_conn, mysql_conn, table_name)
+            restored_tables += 1
         
         print_header("Restore Complete")
-        print(f"Restored {len(tables)} tables to MySQL database")
+        print(f"Created/restored {restored_tables}/{len(tables)} tables in MySQL database")
+        if failed_tables:
+            print("\nFailed tables:")
+            for table_name, reason in failed_tables:
+                print(f"  - {table_name}: {reason}")
+            raise RuntimeError(
+                f"Restore incomplete: {len(failed_tables)} table(s) failed."
+            )
         
     finally:
         sqlite_conn.close()
