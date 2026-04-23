@@ -1,9 +1,14 @@
 package com.open.spring.mvc.PauseMenu;
 
+import com.open.spring.mvc.leaderboard.GameAttempt;
+import com.open.spring.mvc.leaderboard.LeaderboardAntiCheatService;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import lombok.Data;
 import java.util.List;
 import java.util.Map;
@@ -19,13 +24,25 @@ public class PauseMenuApiController {
     @Autowired
     private ScorePauseMenuRepo scoreRepository;
 
+    @Autowired
+    private LeaderboardAntiCheatService leaderboardAntiCheatService;
+
     /**
      * DTO for receiving score data from the frontend
      */
     @Data
     public static class ScorePauseMenuRequest {
-        private String user;
+        private String attemptId;
+        private String gameName;
+        private String variableName;
         private int score;
+    }
+
+    @Data
+    public static class GameAttemptRequest {
+        private String attemptId;
+        private String gameName;
+        private String variableName;
     }
 
     /**
@@ -33,18 +50,18 @@ public class PauseMenuApiController {
      * POST /api/pausemenu/score/save
      */
     @PostMapping("/save")
-    public ResponseEntity<Map<String, Object>> saveScore(@RequestBody ScorePauseMenuRequest request) {
+    public ResponseEntity<Map<String, Object>> saveScore(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody ScorePauseMenuRequest request) {
         try {
-            ScoreCounter newScore = new ScoreCounter();
-            // default to "guest" when user is missing or blank
-            String user = request.getUser();
-            if (user == null || user.trim().isEmpty()) {
-                user = "guest";
-            }
-            newScore.setUser(user);
-            newScore.setScore(request.getScore());
-
-            ScoreCounter saved = scoreRepository.save(newScore);
+            String username = requireUsername(userDetails);
+            ScoreCounter saved = leaderboardAntiCheatService.submitScore(
+                username,
+                request.getAttemptId(),
+                request.getGameName(),
+                request.getVariableName(),
+                request.getScore()
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -52,6 +69,8 @@ public class PauseMenuApiController {
             response.put("message", "Score saved successfully");
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
@@ -68,6 +87,73 @@ public class PauseMenuApiController {
     public ResponseEntity<List<ScoreCounter>> getAllScores() {
         List<ScoreCounter> scores = scoreRepository.findAll();
         return ResponseEntity.ok(scores);
+    }
+
+    /**
+     * Start a new server-tracked attempt.
+     * POST /api/pausemenu/score/start
+     */
+    @PostMapping("/start")
+    public ResponseEntity<Map<String, Object>> startAttempt(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody GameAttemptRequest request) {
+        String username = requireUsername(userDetails);
+        GameAttempt attempt = leaderboardAntiCheatService.startAttempt(username, request.getGameName(), request.getVariableName());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("attemptId", attempt.getAttemptId());
+        response.put("status", attempt.getStatus().name());
+        response.put("message", "Attempt started");
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * Record a progress event.
+     * POST /api/pausemenu/score/progress
+     */
+    @PostMapping("/progress")
+    public ResponseEntity<Map<String, Object>> recordProgress(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody GameAttemptRequest request) {
+        String username = requireUsername(userDetails);
+        GameAttempt attempt = leaderboardAntiCheatService.recordProgress(
+            username,
+            request.getAttemptId(),
+            request.getGameName(),
+            request.getVariableName()
+        );
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("attemptId", attempt.getAttemptId());
+        response.put("status", attempt.getStatus().name());
+        response.put("message", "Progress recorded");
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Record completion before score submission.
+     * POST /api/pausemenu/score/complete
+     */
+    @PostMapping("/complete")
+    public ResponseEntity<Map<String, Object>> recordComplete(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody GameAttemptRequest request) {
+        String username = requireUsername(userDetails);
+        GameAttempt attempt = leaderboardAntiCheatService.recordComplete(
+            username,
+            request.getAttemptId(),
+            request.getGameName(),
+            request.getVariableName()
+        );
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("attemptId", attempt.getAttemptId());
+        response.put("status", attempt.getStatus().name());
+        response.put("message", "Completion recorded");
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -113,7 +199,9 @@ public class PauseMenuApiController {
      * If user is missing, defaults to "guest"
      */
     @PostMapping(path = "/api/gamer/score", consumes = "application/json")
-    public ResponseEntity<Map<String, Object>> saveGamerScore(@RequestBody Map<String, Object> payload) {
+    public ResponseEntity<Map<String, Object>> saveGamerScore(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody Map<String, Object> payload) {
         try {
             int score = 0;
             Object scoreObj = payload.get("score");
@@ -121,27 +209,32 @@ public class PauseMenuApiController {
                 score = ((Number) scoreObj).intValue();
             }
 
-            String user = (payload.get("user") instanceof String) ? (String) payload.get("user") : null;
-            if (user == null || user.trim().isEmpty()) {
-                user = "guest";
-            }
+            String gameName = (payload.get("gameName") instanceof String) ? (String) payload.get("gameName") : null;
+            String variableName = (payload.get("variableName") instanceof String) ? (String) payload.get("variableName") : null;
+            String attemptId = (payload.get("attemptId") instanceof String) ? (String) payload.get("attemptId") : null;
+            String username = requireUsername(userDetails);
 
-            ScoreCounter newScore = new ScoreCounter();
-            newScore.setUser(user);
-            newScore.setScore(score);
-
-            ScoreCounter saved = scoreRepository.save(newScore);
+            ScoreCounter saved = leaderboardAntiCheatService.submitScore(username, attemptId, gameName, variableName, score);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("id", saved.getId());
             response.put("message", "Score saved successfully");
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
             error.put("message", "Error saving score: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
+    }
+
+    private String requireUsername(UserDetails userDetails) {
+        if (userDetails == null || userDetails.getUsername() == null || userDetails.getUsername().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Authenticated user required");
+        }
+        return userDetails.getUsername();
     }
 }
