@@ -1,5 +1,8 @@
 package com.open.spring.mvc.PauseMenu;
 
+import com.open.spring.mvc.leaderboard.LeaderboardAntiCheatService;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -7,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,45 +23,43 @@ import java.util.Map;
 public class GamerScoreController {
 
     @Autowired
-    private ScorePauseMenuRepo scoreRepository;
+    private LeaderboardAntiCheatService leaderboardAntiCheatService;
 
     public static class GamerScoreRequest {
-        public String user;
+        public String attemptId;
         public Integer score;
         public String gameName;
         public String variableName;
     }
 
     @PostMapping("/score")
-    public ResponseEntity<Map<String, Object>> saveGamerScore(@RequestBody GamerScoreRequest payload) {
+    public ResponseEntity<Map<String, Object>> saveGamerScore(@AuthenticationPrincipal UserDetails userDetails, @RequestBody GamerScoreRequest payload) {
         try {
+            if (userDetails == null || userDetails.getUsername() == null || userDetails.getUsername().isBlank()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("success", false, "message", "Authenticated user required"));
+            }
+
             int score = payload != null && payload.score != null ? payload.score : 0;
-            String user = payload != null ? payload.user : null;
-            if (user == null || user.trim().isEmpty()) {
-                user = "guest";
-            }
             String gameName = payload != null ? payload.gameName : null;
-            if (gameName == null || gameName.trim().isEmpty()) {
-                gameName = "unknown";
-            }
             String variableName = payload != null ? payload.variableName : null;
-            if (variableName == null || variableName.trim().isEmpty()) {
-                variableName = "unknown";
-            }
+            String attemptId = payload != null ? payload.attemptId : null;
 
-            ScoreCounter newScore = new ScoreCounter();
-            newScore.setUser(user);
-            newScore.setScore(score);
-            newScore.setGameName(gameName);
-            newScore.setVariableName(variableName);
-
-            ScoreCounter saved = scoreRepository.save(newScore);
+            ScoreCounter saved = leaderboardAntiCheatService.submitScore(
+                userDetails.getUsername(),
+                attemptId,
+                gameName,
+                variableName,
+                score
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("id", saved.getId());
             response.put("message", "Score saved successfully");
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
